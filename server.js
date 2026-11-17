@@ -119,6 +119,8 @@ function readJson(req) {
   });
 }
 
+const validDevice = (d) => (typeof d === 'string' && /^[a-zA-Z0-9-]{16,64}$/.test(d) ? d : '');
+const publicRsvp = ({ device, ...rest }) => rest; // מזהה המכשיר לא יוצא החוצה, גם לא למנהל
 const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
 
 // ---------- ראוטים ----------
@@ -134,11 +136,22 @@ async function handleApi(req, res, url) {
     const note = clean(b.note, 300);
     if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
     const now = new Date().toISOString();
-    const existing = rsvps.find((r) => r.name.toLowerCase() === name.toLowerCase());
-    if (existing) Object.assign(existing, { attending, extra, note, updatedAt: now });
-    else rsvps.push({ id: crypto.randomUUID(), name, attending, extra, note, createdAt: now, updatedAt: now });
+    const device = validDevice(b.device);
+    // קודם לפי מכשיר; אחרת לפי שם – אבל רק אם הרשומה עוד לא שייכת למכשיר אחר
+    let existing = device ? rsvps.find((r) => r.device === device) : null;
+    if (!existing) existing = rsvps.find((r) => !r.device && r.name.toLowerCase() === name.toLowerCase());
+    if (existing) Object.assign(existing, { name, attending, extra, note, updatedAt: now, ...(device && { device }) });
+    else rsvps.push({ id: crypto.randomUUID(), device, name, attending, extra, note, createdAt: now, updatedAt: now });
     save();
     return send(res, 200, { ok: true });
+  }
+
+  // "האם המכשיר הזה כבר נרשם?" – מחזיר רק את הרשומה של אותו מכשיר
+  if (req.method === 'GET' && url.pathname === '/api/rsvp/mine') {
+    if (limited('mine:' + ipOf(req), 120, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי בקשות' });
+    const device = validDevice(url.searchParams.get('device'));
+    const r = device && rsvps.find((x) => x.device === device);
+    return send(res, 200, { rsvp: r ? { name: r.name, attending: r.attending, extra: r.extra, note: r.note } : null });
   }
 
   // כניסת מנהל
@@ -161,7 +174,7 @@ async function handleApi(req, res, url) {
   if (!url.pathname.startsWith('/api/admin/')) return send(res, 404, { error: 'not found' });
   if (!isAdmin(req)) return send(res, 401, { error: 'unauthorized' });
 
-  if (req.method === 'GET' && url.pathname === '/api/admin/list') return send(res, 200, { rsvps });
+  if (req.method === 'GET' && url.pathname === '/api/admin/list') return send(res, 200, { rsvps: rsvps.map(publicRsvp) });
 
   if (req.method === 'GET' && url.pathname === '/api/admin/export.csv') {
     const esc = (v) => '"' + String(v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';

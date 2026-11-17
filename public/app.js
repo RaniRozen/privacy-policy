@@ -5,17 +5,30 @@
   let attending = null;
   let extra = 0;
 
-  const show = (id) => {
+  // ---- זיהוי מכשיר (מזהה אקראי שנשמר בדפדפן) ----
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+    del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+  };
+  let device = store.get('raniDevice');
+  if (!device || !/^[a-zA-Z0-9-]{16,64}$/.test(device)) {
+    device = (crypto.randomUUID && crypto.randomUUID()) || Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+    store.set('raniDevice', device);
+  }
+
+  const show = (id, focus = true) => {
     form.querySelectorAll('.step').forEach((s) => s.classList.toggle('on', s.dataset.step === id));
     err.textContent = '';
     const f = form.querySelector('.step.on input, .step.on .btn');
-    if (f && id !== 'done') f.focus({ preventScroll: true });
+    if (f && focus && id !== 'done') f.focus({ preventScroll: true });
   };
   const name = () => $('#name').value.trim();
+  const firstName = (n) => n.split(' ')[0];
 
   const goNext = () => {
     if (name().length < 2) { err.textContent = 'נא להזין את השם שלך'; return; }
-    $('#hi').textContent = name().split(' ')[0];
+    $('#hi').textContent = firstName(name());
     show('2');
   };
   form.querySelector('.next').addEventListener('click', goNext);
@@ -39,32 +52,46 @@
   $('#minus').addEventListener('click', () => { extra = Math.max(0, extra - 1); render(); });
   render();
 
+  // ---- מסך "כבר נרשמת" / "תודה" ----
+  function showDone(rec, justSent) {
+    const box = $('#thanks');
+    box.replaceChildren();
+    const big = document.createElement('span');
+    big.className = 'big';
+    const n = firstName(rec.name);
+    big.textContent = justSent ? (rec.attending ? 'תודה ' + n + '!' : 'תודה שעדכנת ' + n) : 'היי ' + n + ', כבר נרשמת ✓';
+    const line = rec.attending
+      ? `מגיעים: ${rec.extra + 1} ${rec.extra === 0 ? 'אורח/ת' : 'אורחים'}. נתראה ב-03.12! 🎉`
+      : 'סימנת שלא תוכלו להגיע. נשמח לחגוג איתך בהזדמנות אחרת 💛';
+    box.append(big, line);
+    $('#again').textContent = 'לשינוי התשובה';
+    show('done', false);
+  }
+
+  const remember = (rec) => store.set('raniRsvp', JSON.stringify(rec));
+  let current = null;
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = form.querySelector('.step.on .send');
     btn.disabled = true;
+    const rec = {
+      name: name(),
+      attending,
+      extra: attending ? extra : 0,
+      note: (attending ? $('#note') : $('#note2')).value.trim(),
+    };
     try {
       const res = await fetch('/api/rsvp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name(),
-          attending,
-          extra: attending ? extra : 0,
-          note: (attending ? $('#note') : $('#note2')).value,
-        }),
+        body: JSON.stringify({ ...rec, device }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'שגיאה');
-      const first = name().split(' ')[0];
-      $('#thanks').innerHTML = '';
-      const big = document.createElement('span');
-      big.className = 'big';
-      big.textContent = attending ? 'תודה ' + first + '!' : 'תודה שעדכנת ' + first;
-      $('#thanks').append(big, attending
-        ? `רשמנו ${extra + 1} ${extra === 0 ? 'אורח/ת' : 'אורחים'}. נתראה ב-03.12! 🎉`
-        : 'נשמח לחגוג איתך בהזדמנות אחרת 💛');
-      show('done');
+      current = rec;
+      remember(rec);
+      showDone(rec, true);
     } catch (ex) {
       err.textContent = ex.message || 'משהו השתבש, נסו שוב';
     } finally {
@@ -72,5 +99,33 @@
     }
   });
 
-  $('#again').addEventListener('click', () => { extra = 0; render(); show('1'); });
+  // "לשינוי התשובה": ממלא מחדש את הטופס בתשובה הקודמת
+  $('#again').addEventListener('click', () => {
+    if (current) {
+      $('#name').value = current.name;
+      extra = current.extra || 0;
+      $('#note').value = current.attending ? current.note : '';
+      $('#note2').value = current.attending ? '' : current.note;
+      render();
+    }
+    show('1');
+  });
+
+  // ---- בדיקה בעת טעינה: האם המכשיר הזה כבר נרשם? ----
+  try { current = JSON.parse(store.get('raniRsvp')); } catch { current = null; }
+  if (current && current.name) { attending = current.attending; showDone(current, false); } // מיידי, לפני תשובת השרת
+
+  fetch('/api/rsvp/mine?device=' + encodeURIComponent(device))
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then(({ rsvp }) => {
+      if (rsvp) {
+        current = rsvp; attending = rsvp.attending; remember(rsvp);
+        if (!form.querySelector('.step.on[data-step="1"], .step.on[data-step="2"], .step.on[data-step="3"], .step.on[data-step="no"]') || !$('#name').value) showDone(rsvp, false);
+      } else if (current) {
+        // נמחק ע"י המנהל – מתחילים מחדש
+        current = null; store.del('raniRsvp');
+        show('1', false);
+      }
+    })
+    .catch(() => { /* השרת לא זמין – נשארים עם מה ששמור בטלפון */ });
 })();
