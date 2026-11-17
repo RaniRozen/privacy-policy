@@ -17,7 +17,8 @@
 ## העלאה לאינטרנט (למשל Render / Railway / Fly)
 1. צרו Web Service מהריפו הזה, Start command: `node server.js`.
 2. הגדירו משתנה סביבה `ADMIN_PASSWORD` (סיסמה חזקה).
-3. **חשוב:** הנתונים נשמרים בקובץ `data/rsvps.json`. הוסיפו Persistent Disk וכוונו אליו עם `DATA_DIR=/הנתיב/לדיסק`, אחרת הנתונים יימחקו בכל פריסה מחדש.
+3. **אחסון חינמי (מומלץ):** צרו Redis חינמי ב-upstash.com והגדירו `UPSTASH_REDIS_REST_URL` ו-`UPSTASH_REDIS_REST_TOKEN`. האישורים יישמרו שם גם אחרי הפעלה מחדש.
+   אחרת, **חשוב:** הנתונים נשמרים בקובץ `data/rsvps.json`. הוסיפו Persistent Disk וכוונו אליו עם `DATA_DIR=/הנתיב/לדיסק`, אחרת הנתונים יימחקו בכל פריסה מחדש.
 4. הפעילו HTTPS (ברירת מחדל בשירותים האלה).
 
 ## התאמות

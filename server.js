@@ -21,12 +21,45 @@ const SESSION_MS = 1000 * 60 * 60 * 12;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let rsvps = [];
-try { rsvps = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { rsvps = []; }
 
+// אחסון: אם הוגדרו משתני Upstash – נשמר שם (חינם, שורד הפעלה מחדש). אחרת – קובץ מקומי.
+const UP_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
+const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const UP_KEY = 'rani:rsvps';
+const useRemote = Boolean(UP_URL && UP_TOKEN);
+
+async function upstash(cmd) {
+  const res = await fetch(UP_URL, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + UP_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify(cmd),
+  });
+  const j = await res.json();
+  if (!res.ok || j.error) throw new Error('Upstash: ' + (j.error || res.status));
+  return j.result;
+}
+
+async function load() {
+  if (useRemote) {
+    const v = await upstash(['GET', UP_KEY]);
+    rsvps = v ? JSON.parse(v) : [];
+    console.log('נטענו ' + rsvps.length + ' אישורים מ-Upstash');
+  } else {
+    try { rsvps = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { rsvps = []; }
+    console.warn('⚠️  אחסון בקובץ מקומי – ב-Render חינמי הוא נמחק בהפעלה מחדש. הגדירו UPSTASH_REDIS_REST_URL/TOKEN.');
+  }
+}
+
+let saveChain = Promise.resolve();
 function save() {
-  const tmp = DATA_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(rsvps, null, 2));
-  fs.renameSync(tmp, DATA_FILE);
+  if (!useRemote) {
+    const tmp = DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(rsvps, null, 2));
+    fs.renameSync(tmp, DATA_FILE);
+    return;
+  }
+  const snapshot = JSON.stringify(rsvps);
+  saveChain = saveChain.then(() => upstash(['SET', UP_KEY, snapshot])).catch((e) => console.error('שמירה נכשלה', e.message));
 }
 
 // ---------- עזרים ----------
@@ -170,7 +203,7 @@ function serveStatic(req, res, url) {
   });
 }
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   try {
@@ -181,4 +214,6 @@ http.createServer(async (req, res) => {
     console.error(e);
     send(res, 500, { error: 'שגיאת שרת' });
   }
-}).listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '   (ניהול: /admin)'));
+});
+load().then(() => server.listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '   (ניהול: /admin)')))
+  .catch((e) => { console.error('טעינת נתונים נכשלה:', e.message); process.exit(1); });
