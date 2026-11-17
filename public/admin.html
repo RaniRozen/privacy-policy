@@ -46,7 +46,25 @@
   .seg button[data-v=no].on{background:#ffaaa3; box-shadow:3px 3px 0 var(--ink)}
   .counter.mini{gap:16px; margin-top:6px} .counter.mini output{font-size:46px; min-width:56px} .counter.mini .round{width:48px; height:48px; font-size:28px}
   .mrow{display:flex; gap:10px} .mrow .btn{flex:1; font-size:18px}
-  @media (max-width:560px){ .hide-s{display:none} }
+  .tag{white-space:nowrap}
+  td:first-child b{overflow-wrap:anywhere}
+  @media (max-width:560px){
+    .hide-s{display:none}
+    .wrap{padding-left:10px; padding-right:10px}
+    .card{padding:12px}
+    h1.a{font-size:28px}
+    .stats{grid-template-columns:repeat(6,1fr); gap:8px}
+    .stat{grid-column:span 3; padding:8px 4px}
+    .stat:first-child{grid-column:span 6; display:flex; align-items:center; justify-content:center; gap:12px}
+    .stat:first-child b{font-size:46px}
+    .stat b{font-size:32px}
+    .stat span{font-size:12px; display:block}
+    .bar input{flex:1 1 100%}
+    .chip{flex:1; text-align:center}
+    th,td{padding:8px 5px}
+    .tag{font-size:12px; padding:2px 8px}
+    .edit,.del{font-size:20px; padding:6px}
+  }
 </style>
 </head>
 <body>

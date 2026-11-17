@@ -21,6 +21,7 @@ const SESSION_MS = 1000 * 60 * 60 * 12;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let rsvps = [];
+let ready = false; // נהיה true רק אחרי שהנתונים נטענו, כדי לא לדרוס נתונים קיימים בטעות
 
 // אחסון: אם הוגדרו משתני Upstash – נשמר שם (חינם, שורד הפעלה מחדש). אחרת – קובץ מקומי.
 const UP_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
@@ -51,15 +52,34 @@ async function load() {
 }
 
 let saveChain = Promise.resolve();
+async function withRetry(fn, tries = 3) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); } catch (e) { last = e; await new Promise((r) => setTimeout(r, 400 * (i + 1))); }
+  }
+  throw last;
+}
+// מחזירה הבטחה: נדחית אם השמירה נכשלה, כדי שלא נדווח "הצלחה" כשהנתון לא נשמר
 function save() {
   if (!useRemote) {
-    const tmp = DATA_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(rsvps, null, 2));
-    fs.renameSync(tmp, DATA_FILE);
-    return;
+    try {
+      const tmp = DATA_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(rsvps, null, 2));
+      fs.renameSync(tmp, DATA_FILE);
+      return Promise.resolve();
+    } catch (e) { return Promise.reject(e); }
   }
   const snapshot = JSON.stringify(rsvps);
-  saveChain = saveChain.then(() => upstash(['SET', UP_KEY, snapshot])).catch((e) => console.error('שמירה נכשלה', e.message));
+  const p = saveChain.then(() => withRetry(() => upstash(['SET', UP_KEY, snapshot])));
+  saveChain = p.catch(() => {}); // השרשרת ממשיכה גם אחרי כישלון
+  return p;
+}
+async function saveOr503(res) {
+  try { await save(); return true; } catch (e) {
+    console.error('שמירה נכשלה:', e.message);
+    send(res, 503, { error: 'השמירה לא הצליחה, נסו שוב בעוד רגע' });
+    return false;
+  }
 }
 
 // ---------- עזרים ----------
@@ -125,9 +145,11 @@ const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim()
 
 // ---------- ראוטים ----------
 async function handleApi(req, res, url) {
+  const open = url.pathname === '/api/admin/login' || url.pathname === '/api/admin/logout';
+  if (!ready && !open) return send(res, 503, { error: 'האתר מתעורר, נסו שוב בעוד רגע' });
   // אישור הגעה (ציבורי)
   if (req.method === 'POST' && url.pathname === '/api/rsvp') {
-    if (limited('rsvp:' + ipOf(req), 20, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות, נסו שוב מאוחר יותר' });
+    if (limited('rsvp:' + ipOf(req), 60, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות, נסו שוב מאוחר יותר' });
     let b;
     try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
     const name = clean(b.name, 60);
@@ -142,13 +164,13 @@ async function handleApi(req, res, url) {
     if (!existing) existing = rsvps.find((r) => !r.device && r.name.toLowerCase() === name.toLowerCase());
     if (existing) Object.assign(existing, { name, attending, extra, note, updatedAt: now, ...(device && { device }) });
     else rsvps.push({ id: crypto.randomUUID(), device, name, attending, extra, note, createdAt: now, updatedAt: now });
-    save();
+    if (!(await saveOr503(res))) return;
     return send(res, 200, { ok: true });
   }
 
   // "האם המכשיר הזה כבר נרשם?" – מחזיר רק את הרשומה של אותו מכשיר
   if (req.method === 'GET' && url.pathname === '/api/rsvp/mine') {
-    if (limited('mine:' + ipOf(req), 120, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי בקשות' });
+    if (limited('mine:' + ipOf(req), 600, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי בקשות' });
     const device = validDevice(url.searchParams.get('device'));
     const r = device && rsvps.find((x) => x.device === device);
     return send(res, 200, { rsvp: r ? { name: r.name, attending: r.attending, extra: r.extra, note: r.note } : null });
@@ -157,10 +179,11 @@ async function handleApi(req, res, url) {
   // כניסת מנהל
   if (req.method === 'POST' && url.pathname === '/api/admin/login') {
     const ip = ipOf(req);
-    if (limited('login:' + ip, 8, 15 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות' });
+    // גם לפי IP וגם כללי (למקרה שמישהו מזייף כתובת IP): כך אי אפשר לנחש סיסמה בכוח
+    if (limited('login:' + ip, 8, 15 * 60 * 1000) || limited('login:all', 40, 15 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות' });
     let b;
     try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
-    if (!safeEq(b.password || '', ADMIN_PASSWORD)) return send(res, 401, { error: 'סיסמה שגויה' });
+    if (typeof b.password !== 'string' || !safeEq(b.password, ADMIN_PASSWORD)) return send(res, 401, { error: 'סיסמה שגויה' });
     const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
     return send(res, 200, { ok: true }, {
       'Set-Cookie': `admin=${makeToken()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${secure}`,
@@ -195,7 +218,7 @@ async function handleApi(req, res, url) {
     if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
     const attending = b.attending === true;
     Object.assign(r, { name, attending, extra: attending ? Math.max(0, Math.min(9, parseInt(b.extra, 10) || 0)) : 0, updatedAt: new Date().toISOString() });
-    save();
+    if (!(await saveOr503(res))) return;
     return send(res, 200, { ok: true, rsvp: publicRsvp(r) });
   }
 
@@ -203,7 +226,7 @@ async function handleApi(req, res, url) {
     const id = url.pathname.split('/').pop();
     const before = rsvps.length;
     rsvps = rsvps.filter((r) => r.id !== id);
-    if (rsvps.length !== before) save();
+    if (rsvps.length !== before && !(await saveOr503(res))) return;
     return send(res, 200, { ok: true });
   }
   return send(res, 404, { error: 'not found' });
@@ -223,14 +246,17 @@ const VERSION = (() => {
   return h.digest('hex').slice(0, 10);
 })();
 
+const NOT_FOUND = '<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>לא נמצא</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#a24c33;font-family:system-ui,sans-serif;text-align:center;color:#16120f"><div style="background:#f8e6c4;border:3px solid #16120f;border-radius:16px;box-shadow:5px 5px 0 #16120f;padding:28px 32px;margin:16px"><h1 style="margin:0 0 8px">הדף לא נמצא</h1><p style="margin:0 0 16px">אבל ההזמנה כאן 🎉</p><a href="/" style="display:inline-block;background:#f7b500;color:#16120f;font-weight:800;text-decoration:none;padding:10px 18px;border:3px solid #16120f;border-radius:12px">לדף ההזמנה</a></div>';
+
 function serveStatic(req, res, url) {
-  let p = decodeURIComponent(url.pathname);
+  let p;
+  try { p = decodeURIComponent(url.pathname); } catch { return send(res, 400, 'בקשה לא תקינה'); }
   if (p === '/') p = '/index.html';
   if (p === '/admin') p = '/admin.html';
   const file = path.normalize(path.join(PUBLIC_DIR, p));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 403, 'forbidden');
   fs.readFile(file, (err, buf) => {
-    if (err) return send(res, 404, 'לא נמצא');
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(NOT_FOUND); }
     const ext = path.extname(file);
     if (ext === '.html') buf = Buffer.from(buf.toString('utf8').replaceAll('__V__', VERSION));
     const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
@@ -252,8 +278,13 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  if (req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
   try {
     const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/healthz') return send(res, 200, 'ok'); // לבדיקת חיים / שירותי ניטור
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     return serveStatic(req, res, url);
   } catch (e) {
@@ -261,5 +292,23 @@ const server = http.createServer(async (req, res) => {
     send(res, 500, { error: 'שגיאת שרת' });
   }
 });
-load().then(() => server.listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '   (ניהול: /admin)')))
-  .catch((e) => { console.error('טעינת נתונים נכשלה:', e.message); process.exit(1); });
+// השרת מתחיל להאזין מיד (כדי שהאתר יעלה מהר); ה-API מחזיר 503 עד שהנתונים נטענו, עם ניסיונות חוזרים
+server.listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '   (ניהול: /admin)'));
+(async () => {
+  for (let i = 0; !ready; i++) {
+    try { await load(); ready = true; } catch (e) {
+      console.error('טעינת נתונים נכשלה, מנסה שוב:', e.message);
+      await new Promise((r) => setTimeout(r, Math.min(15000, 2000 * (i + 1))));
+    }
+  }
+})();
+
+// סגירה מסודרת (Render שולח SIGTERM בכל פריסה): ממתינים לשמירה שבדרך
+function shutdown() {
+  server.close();
+  saveChain.finally(() => process.exit(0));
+  setTimeout(() => process.exit(0), 8000).unref();
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));

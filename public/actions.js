@@ -19,7 +19,7 @@
     cal: {
       title: 'לאיזה יומן להוסיף?',
       opts: [
-        { icon: '📅', color: '#4285f4', label: 'Google Calendar', href: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(TITLE)}&dates=${START}/${END}&location=${e(PLACE)}&details=${e(DETAILS)}` },
+        { icon: '🗓️', color: '#4285f4', label: 'Google Calendar', href: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(TITLE)}&dates=${START}/${END}&location=${e(PLACE)}&details=${e(DETAILS)}` },
         { icon: '🍎', color: '#e8e8ed', label: 'Apple Calendar (אייפון / מק)', href: 'rani-bar-mitzvah.ics', same: true },
         { icon: '📧', color: '#0078d4', label: 'Outlook', href: `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${e(TITLE)}&startdt=2026-12-03T08:00:00Z&enddt=2026-12-03T14:00:00Z&location=${e(PLACE)}&body=${e(DETAILS)}` },
         { icon: '📥', color: '#ffd23f', label: 'קובץ ליומן אחר (ICS)', href: 'rani-bar-mitzvah.ics', same: true },

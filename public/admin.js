@@ -60,7 +60,7 @@
       return el('tr', {},
         nameCell,
         el('td', {}, el('span', { className: 'tag ' + (r.attending ? 'yes' : 'no'), textContent: r.attending ? 'מגיע/ה' : 'לא מגיע/ה' })),
-        el('td', { textContent: r.attending ? (r.extra ? `${1 + r.extra} (+${r.extra})` : '1') : '–' }),
+        el('td', { dir: 'ltr', style: 'text-align:right', textContent: r.attending ? (r.extra ? `${1 + r.extra} (+${r.extra})` : '1') : '–' }),
         el('td', { className: 'hide-s note', textContent: new Date(r.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) }),
         el('td', { className: 'acts' }, edit, del),
       );

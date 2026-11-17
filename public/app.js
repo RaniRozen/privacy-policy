@@ -5,6 +5,13 @@
   let attending = null;
   let extra = 0;
 
+  // תמונה שלא נטענה (למשל הוסרה) – מוסרים אותה כדי שלא תוצג תמונה שבורה
+  document.querySelectorAll('.pol img').forEach((img) => {
+    const drop = () => img.closest('.pol')?.remove();
+    img.addEventListener('error', drop);
+    if (img.complete && img.naturalWidth === 0) drop();
+  });
+
   // ---- זיהוי מכשיר (מזהה אקראי שנשמר בדפדפן) ----
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -17,7 +24,7 @@
     store.set('raniDevice', device);
   }
 
-  const show = (id, focus = true) => {
+  const show = (id) => {
     form.querySelectorAll('.step').forEach((s) => s.classList.toggle('on', s.dataset.step === id));
     document.body.classList.toggle('registered', id === 'done'); // מי שכבר נרשם לא צריך לראות "אנא אשרו הגעה"
     err.textContent = '';
@@ -118,7 +125,7 @@
       : 'סימנת שלא תוכלו להגיע. נשמח לחגוג איתך בהזדמנות אחרת 💛';
     box.append(big, line);
     $('#again').textContent = 'לשינוי התשובה';
-    show('done', false);
+    show('done');
   }
 
   const remember = (rec) => store.set('raniRsvp', JSON.stringify(rec));
@@ -127,7 +134,12 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = form.querySelector('.step.on .send');
+    const btnText = btn.textContent;
     btn.disabled = true;
+    btn.textContent = 'שולח...';
+    err.textContent = '';
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 70000); // האתר החינמי לפעמים מתעורר לאט
     const rec = {
       name: name(),
       attending,
@@ -139,16 +151,21 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...rec, device }),
+        signal: ctl.signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'שגיאה');
+      let data = {};
+      try { data = await res.json(); } catch { /* תשובה לא תקינה */ }
+      if (!res.ok) throw new Error(data.error || 'משהו השתבש, נסו שוב');
       current = rec;
       remember(rec);
       showDone(rec, true);
     } catch (ex) {
-      err.textContent = ex.message || 'משהו השתבש, נסו שוב';
+      // הודעות מהשרת הן בעברית; כל שגיאה אחרת (חיבור, זמן קצוב) מוצגת בנוסח ידידותי
+      err.textContent = /[\u0590-\u05ff]/.test(ex.message) ? ex.message : 'אין חיבור כרגע, נסו שוב בעוד רגע';
     } finally {
+      clearTimeout(timer);
       btn.disabled = false;
+      btn.textContent = btnText;
     }
   });
 
@@ -177,7 +194,7 @@
       } else if (current) {
         // נמחק ע"י המנהל – מתחילים מחדש
         current = null; store.del('raniRsvp');
-        show('1', false);
+        show('1');
       }
     })
     .catch(() => { /* השרת לא זמין – נשארים עם מה ששמור בטלפון */ });
