@@ -50,10 +50,12 @@
   }));
 
   const render = () => {
-    $('#extra').textContent = extra;
-    $('#total').textContent = extra === 0 ? 'מגיע/ה לבד' : `סה"כ ${extra + 1} אנשים`;
+    // המסך מציג את הסך הכל (כולל המוזמן); בשרת נשמר מספר המלווים (סך הכל פחות 1)
+    $('#extra').textContent = extra + 1;
+    $('#total').textContent = extra === 0 ? 'מגיע/ה לבד' : `${extra + 1} אנשים`;
   };
-  $('#plus').addEventListener('click', () => { extra = Math.min(9, extra + 1); render(); });
+  // מקסימום 9 אנשים בסך הכל, בלי הודעה
+  $('#plus').addEventListener('click', () => { extra = Math.min(8, extra + 1); render(); });
   $('#minus').addEventListener('click', () => { extra = Math.max(0, extra - 1); render(); });
   render();
 

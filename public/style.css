@@ -175,3 +175,5 @@ input:focus{outline:3px solid var(--b)}
 .place .i{margin-inline-end:.3em; color:var(--r)}
 .act .ic{display:inline-flex}
 .act .ic .i{width:1.25em; height:1.25em; stroke-width:2.2}
+
+.rsvp label small{font-weight:500; font-size:.7em}
