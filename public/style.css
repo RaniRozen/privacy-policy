@@ -3,9 +3,16 @@
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
+html{
+  background-color:#a24c33;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 38px, rgba(30,15,8,.55) 38px 42px),
+    repeating-linear-gradient(90deg, transparent 0 78px, rgba(30,15,8,.4) 78px 82px);
+  min-height:100%;
+}
 body{
   margin:0; font-family:'Rubik',system-ui,sans-serif; color:var(--ink);
-  background:#6a3a28; min-height:100vh; overflow-x:hidden;
+  background:transparent; min-height:100vh; min-height:100dvh; overflow-x:hidden;
 }
 
 /* ---- קיר גרפיטי ---- */
