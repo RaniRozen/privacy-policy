@@ -204,7 +204,7 @@ const MIME = {
 // גרסה שמשתנה בכל שינוי בקבצי האתר – מוזרקת לכתובות ה-CSS/JS כדי שדפדפן לעולם לא יציג קבצים ישנים
 const VERSION = (() => {
   const h = crypto.createHash('sha1');
-  for (const f of ['style.css', 'app.js', 'actions.js', 'admin.js']) {
+  for (const f of ['style.css', 'app.js', 'actions.js', 'admin.js', 'viewport.js']) {
     try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* ignore */ }
   }
   return h.digest('hex').slice(0, 10);
