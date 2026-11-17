@@ -59,6 +59,21 @@
     if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !e.target.closest('input, textarea')) el.blur();
   }, { passive: true });
 
+  // ---- האורות למעלה דוהים בהדרגה ככל שגוללים, כדי שלא יסתירו את הטקסט ----
+  const lights = document.querySelector('.lights');
+  if (lights) {
+    let ticking = false;
+    const FADE_DISTANCE = 260; // אחרי כמה פיקסלים גלילה האורות נעלמים לגמרי
+    const update = () => {
+      const o = Math.max(0, Math.min(1, 1 - window.scrollY / FADE_DISTANCE));
+      lights.style.opacity = o.toFixed(2);
+      lights.style.visibility = o === 0 ? 'hidden' : 'visible';
+      ticking = false;
+    };
+    window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    update();
+  }
+
   // ---- מקלדת נפתחת: הדף זז כך שהשדה תמיד נראה מעל המקלדת ----
   const vv = window.visualViewport;
   const isField = (el) => el && /^(INPUT|TEXTAREA)$/.test(el.tagName);
