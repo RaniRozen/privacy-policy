@@ -209,8 +209,18 @@ function serveStatic(req, res, url) {
   if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 403, 'forbidden');
   fs.readFile(file, (err, buf) => {
     if (err) return send(res, 404, 'לא נמצא');
-    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'public, max-age=300' };
-    if (p === '/admin.html') { headers['X-Robots-Tag'] = 'noindex, nofollow'; headers['Cache-Control'] = 'no-store'; }
+    const ext = path.extname(file);
+    const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
+    if (['.html', '.css', '.js', '.ics'].includes(ext)) {
+      // קבצי האתר: הדפדפן תמיד בודק מול השרת (ETag), כך שעדכונים מגיעים מיד ולא נתקעים בזיכרון
+      const etag = '"' + crypto.createHash('sha1').update(buf).digest('hex') + '"';
+      headers.ETag = etag;
+      headers['Cache-Control'] = 'no-cache';
+      if (p === '/admin.html') { headers['X-Robots-Tag'] = 'noindex, nofollow'; headers['Cache-Control'] = 'no-store'; }
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+    } else {
+      headers['Cache-Control'] = 'public, max-age=86400'; // תמונות
+    }
     res.writeHead(200, headers);
     res.end(buf);
   });

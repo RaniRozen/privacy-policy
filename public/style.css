@@ -40,7 +40,7 @@ body{
 .wrap{max-width:560px; margin:0 auto; padding:70px 14px 40px; position:relative; z-index:2}
 
 /* ---- פולרואידים ---- */
-.polaroids{display:flex; justify-content:center; align-items:flex-end; gap:6px; margin-bottom:-26px; position:relative; z-index:3}
+.polaroids{direction:ltr; display:flex; justify-content:center; align-items:flex-end; gap:6px; margin-bottom:-26px; position:relative; z-index:3}
 .pol{margin:0; background:#fffaf0; padding:7px 7px 22px; box-shadow:0 8px 18px rgba(0,0,0,.45); width:31%; position:relative}
 .pol::before{content:""; position:absolute; top:-9px; left:50%; width:46px; height:16px; margin-left:-23px; background:rgba(235,215,170,.85); transform:rotate(-3deg)}
 .pol img{display:block; width:100%; aspect-ratio:1/1.1; object-fit:cover; background:#ddd}
