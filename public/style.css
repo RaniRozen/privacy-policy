@@ -112,19 +112,27 @@ input:focus{outline:3px solid var(--b)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 @media (max-width:480px){.palm{font-size:70px; top:150px; opacity:.8}.skate{display:none}}
 
-/* ---- הוספה ליומן ---- */
-.cal{display:flex; align-items:center; gap:14px; margin:14px auto 4px; max-width:420px; padding:12px 14px; background:#fffdf7; border:3px solid var(--ink); border-radius:14px; box-shadow:4px 4px 0 var(--ink); transform:rotate(-.6deg)}
-.cal-tile{flex:0 0 58px; height:64px; border:3px solid var(--ink); border-radius:10px; background:#fff; overflow:hidden; text-align:center; box-shadow:2px 2px 0 var(--ink)}
-.cal-tile b{display:block; background:var(--r); color:#fff; font-size:13px; letter-spacing:2px; padding:2px 0; font-family:'Rubik',sans-serif}
-.cal-tile span{display:block; font-family:'Permanent Marker',cursive; font-size:34px; line-height:1.15}
-.cal-body{flex:1; min-width:0}
-.cal-body strong{display:block; font-size:17px; margin-bottom:8px}
-.cal-btns{display:flex; flex-direction:column; gap:8px}
-.cal-btns a{display:flex; align-items:center; justify-content:center; gap:8px; padding:8px 12px; border:2px solid var(--ink); border-radius:10px; font-weight:800; font-size:15px; color:var(--ink); text-decoration:none; background:var(--y); box-shadow:2px 2px 0 var(--ink); transition:transform .1s, box-shadow .1s}
-.cal-btns a:active{transform:translate(2px,2px); box-shadow:none}
-.cal-btns a.gcal{background:#fff}
-.cal-btns i{font-style:normal; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:14px; font-weight:800; line-height:1}
-.gcal i{background:#4285f4; color:#fff}
-.ical i{background:#fff; font-size:13px}
-.step[data-step="done"] .cal{margin:6px auto; transform:none; box-shadow:3px 3px 0 var(--ink)}
-@media (max-width:360px){.cal{flex-direction:column; text-align:center}.cal-btns{width:100%}}
+/* ---- כפתורי ניווט / יומן ---- */
+.actions{display:flex; gap:10px; justify-content:center; margin:14px 0 4px}
+.act{flex:1; max-width:210px; font:inherit; font-weight:800; font-size:clamp(16px,4.6vw,19px); padding:12px 8px; border:3px solid var(--ink); border-radius:12px; cursor:pointer; color:var(--ink); box-shadow:4px 4px 0 var(--ink); transition:transform .1s, box-shadow .1s; display:flex; align-items:center; justify-content:center; gap:8px}
+.act:active{transform:translate(3px,3px); box-shadow:1px 1px 0 var(--ink)}
+.act.nav{background:var(--b); color:#fff}
+.act.cal{background:var(--y)}
+.act .ic{font-size:1.2em; line-height:1}
+.actions.small{margin:10px 0 2px}
+.actions.small .act{font-size:16px; padding:9px 6px; box-shadow:3px 3px 0 var(--ink)}
+
+/* ---- חלון בחירה (נפתח מלמטה) ---- */
+.sheet-bg{position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center; opacity:0; transition:opacity .2s}
+.sheet-bg[hidden]{display:none}
+.sheet-bg.show{opacity:1}
+.sheet{width:100%; max-width:520px; background:var(--paper); border:3px solid var(--ink); border-bottom:0; border-radius:22px 22px 0 0; padding:10px 16px calc(18px + env(safe-area-inset-bottom)); transform:translateY(100%); transition:transform .25s ease; box-shadow:0 -6px 0 var(--y)}
+.sheet-bg.show .sheet{transform:none}
+.grip{width:46px; height:5px; border-radius:3px; background:var(--ink); opacity:.35; margin:0 auto 10px}
+.sheet h2{margin:0 0 12px; text-align:center; font-size:22px; font-weight:800}
+.opts{display:flex; flex-direction:column; gap:10px}
+.opt{display:flex; align-items:center; gap:14px; padding:12px 14px; background:#fffdf7; border:3px solid var(--ink); border-radius:14px; box-shadow:3px 3px 0 var(--ink); color:var(--ink); text-decoration:none; font-weight:800; font-size:18px}
+.opt:active{transform:translate(2px,2px); box-shadow:1px 1px 0 var(--ink)}
+.oi{width:42px; height:42px; border-radius:50%; border:2px solid var(--ink); display:grid; place-items:center; font-size:22px; flex:0 0 auto}
+.sheet-close{margin-top:12px; width:100%; font:inherit; font-weight:800; font-size:17px; padding:12px; border:3px solid var(--ink); border-radius:12px; background:transparent; cursor:pointer}
+@media (prefers-reduced-motion:reduce){.sheet{transition:none}}
