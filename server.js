@@ -186,6 +186,19 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (req.method === 'PUT' && url.pathname.startsWith('/api/admin/rsvp/')) {
+    let b;
+    try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
+    const r = rsvps.find((x) => x.id === url.pathname.split('/').pop());
+    if (!r) return send(res, 404, { error: 'לא נמצא' });
+    const name = clean(b.name, 60);
+    if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
+    const attending = b.attending === true;
+    Object.assign(r, { name, attending, extra: attending ? Math.max(0, Math.min(9, parseInt(b.extra, 10) || 0)) : 0, updatedAt: new Date().toISOString() });
+    save();
+    return send(res, 200, { ok: true, rsvp: publicRsvp(r) });
+  }
+
   if (req.method === 'DELETE' && url.pathname.startsWith('/api/admin/rsvp/')) {
     const id = url.pathname.split('/').pop();
     const before = rsvps.length;

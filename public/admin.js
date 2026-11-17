@@ -53,6 +53,8 @@
         await api('/api/admin/rsvp/' + encodeURIComponent(r.id), { method: 'DELETE' });
         load();
       });
+      const edit = el('button', { className: 'edit', title: 'עריכה', textContent: '✏️' });
+      edit.addEventListener('click', () => openEdit(r));
       const nameCell = el('td', {}, el('b', { textContent: r.name }));
       if (r.note) nameCell.append(el('div', { className: 'note', textContent: '💬 ' + r.note }));
       return el('tr', {},
@@ -60,10 +62,47 @@
         el('td', {}, el('span', { className: 'tag ' + (r.attending ? 'yes' : 'no'), textContent: r.attending ? 'מגיע/ה' : 'לא מגיע/ה' })),
         el('td', { textContent: r.attending ? (r.extra ? `${1 + r.extra} (+${r.extra})` : '1') : '–' }),
         el('td', { className: 'hide-s note', textContent: new Date(r.updatedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) }),
-        el('td', {}, del),
+        el('td', { className: 'acts' }, edit, del),
       );
     }));
   }
+
+  // ---------- חלון עריכה ----------
+  let editing = null; // { id, attending, total }
+  const eBg = $('#editBg');
+  const syncEdit = () => {
+    document.querySelectorAll('.seg button').forEach((b) => b.classList.toggle('on', (b.dataset.v === 'yes') === editing.attending));
+    $('#eCountWrap').style.display = editing.attending ? '' : 'none';
+    $('#eCount').textContent = editing.total;
+  };
+  function openEdit(r) {
+    editing = { id: r.id, attending: r.attending, total: Math.max(1, Math.min(10, 1 + (r.extra || 0))) };
+    $('#eName').value = r.name;
+    $('#eErr').textContent = '';
+    syncEdit();
+    eBg.hidden = false;
+  }
+  const closeEdit = () => { eBg.hidden = true; editing = null; };
+  document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => { editing.attending = b.dataset.v === 'yes'; syncEdit(); }));
+  $('#ePlus').addEventListener('click', () => { editing.total = Math.min(10, editing.total + 1); syncEdit(); });
+  $('#eMinus').addEventListener('click', () => { editing.total = Math.max(1, editing.total - 1); syncEdit(); });
+  $('#eCancel').addEventListener('click', closeEdit);
+  eBg.addEventListener('click', (ev) => { if (ev.target === eBg) closeEdit(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !eBg.hidden) closeEdit(); });
+  $('#eName').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } });
+  $('#editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#eName').value.trim();
+    if (name.length < 2) { $('#eErr').textContent = 'נא להזין שם'; return; }
+    const res = await api('/api/admin/rsvp/' + encodeURIComponent(editing.id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, attending: editing.attending, extra: editing.attending ? editing.total - 1 : 0 }),
+    });
+    if (!res.ok) { $('#eErr').textContent = (await res.json()).error || 'שגיאה בשמירה'; return; }
+    closeEdit();
+    load();
+  });
 
   $('#lf').addEventListener('submit', async (e) => {
     e.preventDefault();
