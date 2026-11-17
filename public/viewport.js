@@ -1,24 +1,15 @@
-// Safari באייפון מתעלם מ-minimum-scale. כשהדף מוקטן (צביטה החוצה) מחזירים אותו אוטומטית לגודל הרגיל.
-// הגדלה (zoom in) נשארת אפשרית כרגיל.
+// חסימת זום (צביטה והגדלה בלחיצה כפולה) – כדי שהדף תמיד יוצג בגודל הנכון.
 (() => {
-  const vv = window.visualViewport;
-  const meta = document.querySelector('meta[name="viewport"]');
-  if (!vv || !meta) return;
-  const NORMAL = meta.getAttribute('content');
-  const LOCK = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1';
-  let timer = null;
-  let locked = false;
-
-  function snapBack() {
-    if (locked) return;
-    locked = true;
-    meta.setAttribute('content', LOCK);
-    clearTimeout(timer);
-    timer = setTimeout(() => { meta.setAttribute('content', NORMAL); locked = false; }, 350);
-  }
-  function check() { if (vv.scale < 0.97) snapBack(); }
-
-  vv.addEventListener('resize', check);
-  // גם כשהאצבעות עוזבות את המסך
-  window.addEventListener('touchend', () => setTimeout(check, 50), { passive: true });
+  const stop = (e) => e.preventDefault();
+  // Safari באייפון: אירועי מחוות הצביטה
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, stop, { passive: false }));
+  // צביטה בשתי אצבעות בדפדפנים אחרים
+  document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // לחיצה כפולה מהירה (מונעת הגדלה)
+  let last = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - last < 300 && !e.target.closest('input, textarea, a, button')) e.preventDefault();
+    last = now;
+  }, { passive: false });
 })();

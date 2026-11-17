@@ -4,6 +4,8 @@
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 html{
+  touch-action:pan-x pan-y; /* גלילה בלבד – בלי זום בצביטה או בלחיצה כפולה */
+  -webkit-text-size-adjust:100%;
   background-color:#a24c33;
   background-image:
     repeating-linear-gradient(0deg, transparent 0 38px, rgba(30,15,8,.55) 38px 42px),
