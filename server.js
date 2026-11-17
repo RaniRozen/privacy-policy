@@ -267,7 +267,7 @@ const VERSION = (() => {
   return h.digest('hex').slice(0, 10);
 })();
 
-const NOT_FOUND = '<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>לא נמצא</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#a24c33;font-family:system-ui,sans-serif;text-align:center;color:#16120f"><div style="background:#f8e6c4;border:3px solid #16120f;border-radius:16px;box-shadow:5px 5px 0 #16120f;padding:28px 32px;margin:16px"><h1 style="margin:0 0 8px">הדף לא נמצא</h1><p style="margin:0 0 16px">אבל ההזמנה כאן 🎉</p><a href="/" style="display:inline-block;background:#f7b500;color:#16120f;font-weight:800;text-decoration:none;padding:10px 18px;border:3px solid #16120f;border-radius:12px">לדף ההזמנה</a></div>';
+const NOT_FOUND = '<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>לא נמצא</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#a24c33;font-family:system-ui,sans-serif;text-align:center;color:#16120f"><div style="background:#f8e6c4;border:3px solid #16120f;border-radius:16px;box-shadow:5px 5px 0 #16120f;padding:28px 32px;margin:16px"><h1 style="margin:0 0 8px">הדף לא נמצא</h1><p style="margin:0 0 16px">אבל אישורי ההגעה כאן 🎉</p><a href="/" style="display:inline-block;background:#f7b500;color:#16120f;font-weight:800;text-decoration:none;padding:10px 18px;border:3px solid #16120f;border-radius:12px">לאישורי ההגעה</a></div>';
 
 function serveStatic(req, res, url) {
   let p;
