@@ -19,7 +19,8 @@ body{
 
 /* ---- קיר גרפיטי ---- */
 .bg{
-  position:fixed; inset:0; z-index:-3;
+  /* גובה קבוע (המסך הגדול, בלי סרגל הכתובות) – כך הרקע לא נמתח ולא זז כשהסרגל מתכווץ בגלילה */
+  position:fixed; top:0; left:0; right:0; height:100vh; height:100lvh; z-index:-3;
   background:
     radial-gradient(ellipse 38% 28% at 4% 12%, var(--y) 0 60%, transparent 62%),
     radial-gradient(ellipse 30% 22% at 96% 30%, var(--r) 0 60%, transparent 62%),
@@ -43,7 +44,7 @@ body{
 .lights i:nth-child(3n){animation-delay:1.3s}
 @keyframes glow{50%{opacity:.7}}
 .palm{position:fixed; left:-10px; top:170px; font-size:110px; filter:grayscale(1) brightness(0); z-index:1; transform:rotate(8deg)}
-.skate{position:fixed; right:-70px; bottom:90px; width:110px; height:300px; border-radius:55px; transform:rotate(-12deg); z-index:1;
+.skate{position:fixed; right:-70px; top:calc(100vh - 390px); top:calc(100lvh - 390px); width:110px; height:300px; border-radius:55px; transform:rotate(-12deg); z-index:1;
   background:radial-gradient(circle at 30% 20%, #f0b36b 0 8%, transparent 9%) , repeating-radial-gradient(#222 0 3px,#3b2c22 3px 7px); border:6px solid #e9b373}
 
 .wrap{max-width:560px; margin:0 auto; padding:70px 14px calc(40px + var(--kb, 0px)); position:relative; z-index:2}
