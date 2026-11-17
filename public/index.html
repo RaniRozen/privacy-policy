@@ -57,7 +57,7 @@
     <form id="rsvp" class="rsvp" novalidate>
       <div class="step on" data-step="1">
         <label for="name">מה השם שלך?</label>
-        <input id="name" name="name" type="text" maxlength="60" autocomplete="name" placeholder="שם מלא" required>
+        <input id="name" name="name" type="text" maxlength="60" autocomplete="name" enterkeyhint="done" placeholder="שם מלא" required>
         <button type="button" class="btn next">המשך ←</button>
       </div>
 
@@ -74,18 +74,18 @@
         <label>כמה אנשים מגיעים <u>בנוסף</u> אליך?</label>
         <div class="counter">
           <button type="button" class="round" id="minus" aria-label="פחות">−</button>
-          <output id="extra">0</output>
+          <input id="extra" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="done" value="0" aria-label="כמה אנשים בנוסף">
           <button type="button" class="round" id="plus" aria-label="יותר">+</button>
         </div>
         <p class="hint" id="total"></p>
-        <input id="note" type="text" maxlength="300" placeholder="הערה (אופציונלי) – אלרגיות, שאלות...">
+        <input id="note" type="text" maxlength="300" enterkeyhint="done" placeholder="הערה (אופציונלי) – אלרגיות, שאלות...">
         <button type="submit" class="btn send">שליחה ✓</button>
         <button type="button" class="link back">→ חזרה</button>
       </div>
 
       <div class="step" data-step="no">
         <label>איזה באסה, נחסר לנו! 💛</label>
-        <input id="note2" type="text" maxlength="300" placeholder="רוצים להשאיר ברכה? (אופציונלי)">
+        <input id="note2" type="text" maxlength="300" enterkeyhint="done" placeholder="רוצים להשאיר ברכה? (אופציונלי)">
         <button type="submit" class="btn send">שליחה ✓</button>
         <button type="button" class="link back">→ חזרה</button>
       </div>

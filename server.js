@@ -132,7 +132,7 @@ async function handleApi(req, res, url) {
     try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
     const name = clean(b.name, 60);
     const attending = b.attending === true || b.attending === 'yes';
-    const extra = attending ? Math.max(0, Math.min(20, parseInt(b.extra, 10) || 0)) : 0;
+    const extra = attending ? Math.max(0, Math.min(9, parseInt(b.extra, 10) || 0)) : 0;
     const note = clean(b.note, 300);
     if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
     const now = new Date().toISOString();

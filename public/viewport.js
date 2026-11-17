@@ -17,7 +17,7 @@
   let last = 0;
   document.addEventListener('touchend', (e) => {
     const now = Date.now();
-    if (now - last < 350 && !e.target.closest('input, textarea, select')) stop(e);
+    if (now - last < 350 && !e.target.closest('input, textarea, select, button, a, label')) stop(e); // לחיצות מהירות על כפתורים חייבות לעבוד
     last = now;
   }, opts);
   // זום במחשב: Ctrl + גלגלת

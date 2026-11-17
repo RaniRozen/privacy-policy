@@ -21,8 +21,6 @@
     form.querySelectorAll('.step').forEach((s) => s.classList.toggle('on', s.dataset.step === id));
     document.body.classList.toggle('registered', id === 'done'); // מי שכבר נרשם לא צריך לראות "אנא אשרו הגעה"
     err.textContent = '';
-    const f = form.querySelector('.step.on input, .step.on .btn');
-    if (f && focus && id !== 'done') f.focus({ preventScroll: true });
   };
   const name = () => $('#name').value.trim();
   const firstName = (n) => n.split(' ')[0];
@@ -33,7 +31,6 @@
     show('2');
   };
   form.querySelector('.next').addEventListener('click', goNext);
-  $('#name').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); goNext(); } });
 
   form.querySelectorAll('.choice .btn').forEach((b) => b.addEventListener('click', () => {
     attending = b.dataset.v === 'yes';
@@ -46,12 +43,33 @@
   }));
 
   const render = () => {
-    $('#extra').textContent = extra;
+    $('#extra').value = extra;
     $('#total').textContent = extra === 0 ? 'מגיע/ה לבד' : `סה"כ ${extra + 1} אנשים`;
   };
-  $('#plus').addEventListener('click', () => { extra = Math.min(20, extra + 1); render(); });
+  $('#plus').addEventListener('click', () => { extra = Math.min(9, extra + 1); render(); });
   $('#minus').addEventListener('click', () => { extra = Math.max(0, extra - 1); render(); });
   render();
+
+  const extraEl = $('#extra');
+  extraEl.addEventListener('focus', () => setTimeout(() => extraEl.select(), 0)); // הקלדה מחליפה את הערך
+  extraEl.addEventListener('input', () => {
+    const raw = extraEl.value;
+    const d = raw.replace(/\D/g, '').slice(-1); // רק ספרה אחת (0-9), בלי הודעה
+    if (d === '' && raw !== '') { extraEl.value = String(extra); return; } // הוקלדה אות – מתעלמים, הערך נשאר
+    extra = d === '' ? 0 : parseInt(d, 10);
+    extraEl.value = d; // מותר שיהיה ריק בזמן מחיקה
+    $('#total').textContent = extra === 0 ? 'מגיע/ה לבד' : `סה"כ ${extra + 1} אנשים`;
+  });
+  extraEl.addEventListener('blur', render);
+
+  // Enter / "סיום" במקלדת סוגר את המקלדת בלבד. לחיצה מחוץ לשדה סוגרת אותה גם כן.
+  form.querySelectorAll('input').forEach((i) => i.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); i.blur(); }
+  }));
+  document.addEventListener('touchstart', (e) => {
+    const el = document.activeElement;
+    if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !e.target.closest('input, textarea')) el.blur();
+  }, { passive: true });
 
   // ---- מסך "כבר נרשמת" / "תודה" ----
   function showDone(rec, justSent) {
