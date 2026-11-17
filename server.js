@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -269,6 +270,7 @@ const VERSION = (() => {
 
 const NOT_FOUND = '<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>לא נמצא</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#a24c33;font-family:system-ui,sans-serif;text-align:center;color:#16120f"><div style="background:#f8e6c4;border:3px solid #16120f;border-radius:16px;box-shadow:5px 5px 0 #16120f;padding:28px 32px;margin:16px"><h1 style="margin:0 0 8px">הדף לא נמצא</h1><p style="margin:0 0 16px">אבל אישורי ההגעה כאן 🎉</p><a href="/" style="display:inline-block;background:#f7b500;color:#16120f;font-weight:800;text-decoration:none;padding:10px 18px;border:3px solid #16120f;border-radius:12px">לאישורי ההגעה</a></div>';
 
+const gzCache = new Map();
 function serveStatic(req, res, url) {
   let p;
   try { p = decodeURIComponent(url.pathname); } catch { return send(res, 400, 'בקשה לא תקינה'); }
@@ -288,6 +290,15 @@ function serveStatic(req, res, url) {
       headers['Cache-Control'] = 'no-cache';
       if (p === '/admin.html') { headers['X-Robots-Tag'] = 'noindex, nofollow'; headers['Cache-Control'] = 'no-store'; }
       if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+      // דחיסת gzip (עם מטמון לפי תוכן) – חוסך כ-70% מהנתונים בטלפון
+      headers.Vary = 'Accept-Encoding';
+      if (/\bgzip\b/.test(req.headers['accept-encoding'] || '') && buf.length > 512) {
+        let z = gzCache.get(etag);
+        if (!z) { z = zlib.gzipSync(buf, { level: 9 }); if (gzCache.size < 50) gzCache.set(etag, z); }
+        headers['Content-Encoding'] = 'gzip';
+        res.writeHead(200, headers);
+        return res.end(z);
+      }
     } else {
       headers['Cache-Control'] = 'public, max-age=86400'; // תמונות
     }
