@@ -134,3 +134,22 @@ input:focus{outline:3px solid var(--b)}
 .oi{width:42px; height:42px; border-radius:50%; border:2px solid var(--ink); display:grid; place-items:center; font-size:22px; flex:0 0 auto}
 .sheet-close{margin-top:12px; width:100%; font:inherit; font-weight:800; font-size:17px; padding:12px; border:3px solid var(--ink); border-radius:12px; background:transparent; cursor:pointer}
 @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+/* ---- מסכים צרים מאוד (עד 360px) ---- */
+.when span{white-space:nowrap}
+@media (max-width:360px){
+  .wrap{padding-left:10px; padding-right:10px}
+  .paper{padding-left:12px; padding-right:12px}
+  .when{gap:8px; font-size:20px}
+  .sep{height:28px}
+  .place{font-size:19px}
+  .time{flex-basis:76px; font-size:21px}
+  .sched li{gap:8px}
+  .txt{padding-right:10px}
+  .txt h3{font-size:19px}
+  .txt p{font-size:14px}
+  .banner{font-size:16px; padding:12px 8px}
+  .act{font-size:15px; padding:11px 4px; gap:5px}
+  .rsvp{padding:14px 10px}
+  .rsvp label{font-size:20px}
+}
