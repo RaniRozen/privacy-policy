@@ -69,7 +69,6 @@ h1{margin:0; line-height:.95; font-weight:400}
 .where{margin-top:10px}
 .place{font-size:clamp(20px,5.6vw,28px); font-weight:800}
 .where small{font-size:15px}
-.nav{display:inline-block; margin-top:6px; font-size:14px; color:var(--b); font-weight:700}
 .brush{height:7px; width:80%; margin:14px auto; border-radius:6px; background:linear-gradient(90deg,var(--b),var(--y) 60%,var(--b))}
 
 /* ---- לו"ז ---- */
@@ -114,10 +113,9 @@ input:focus{outline:3px solid var(--b)}
 
 /* ---- כפתורי ניווט / יומן ---- */
 .actions{display:flex; gap:10px; justify-content:center; margin:14px 0 4px}
-.act{flex:1; max-width:210px; font:inherit; font-weight:800; font-size:clamp(16px,4.6vw,19px); padding:12px 8px; border:3px solid var(--ink); border-radius:12px; cursor:pointer; color:var(--ink); box-shadow:4px 4px 0 var(--ink); transition:transform .1s, box-shadow .1s; display:flex; align-items:center; justify-content:center; gap:8px}
+.act{flex:1 1 0; min-width:0; max-width:210px; -webkit-appearance:none; appearance:none; font:inherit; font-weight:800; font-size:clamp(16px,4.6vw,19px); padding:12px 8px; border:3px solid var(--ink); border-radius:12px; cursor:pointer; color:var(--ink); box-shadow:4px 4px 0 var(--ink); transition:transform .1s, box-shadow .1s; display:flex; align-items:center; justify-content:center; gap:8px}
 .act:active{transform:translate(3px,3px); box-shadow:1px 1px 0 var(--ink)}
-.act.nav{background:var(--b); color:#fff}
-.act.cal{background:var(--y)}
+.act{background:var(--y)}
 .act .ic{font-size:1.2em; line-height:1}
 .actions.small{margin:10px 0 2px}
 .actions.small .act{font-size:16px; padding:9px 6px; box-shadow:3px 3px 0 var(--ink)}

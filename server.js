@@ -201,6 +201,15 @@ const MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.ics': 'text/calendar; charset=utf-8',
 };
 
+// גרסה שמשתנה בכל שינוי בקבצי האתר – מוזרקת לכתובות ה-CSS/JS כדי שדפדפן לעולם לא יציג קבצים ישנים
+const VERSION = (() => {
+  const h = crypto.createHash('sha1');
+  for (const f of ['style.css', 'app.js', 'actions.js', 'admin.js']) {
+    try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* ignore */ }
+  }
+  return h.digest('hex').slice(0, 10);
+})();
+
 function serveStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/') p = '/index.html';
@@ -210,6 +219,7 @@ function serveStatic(req, res, url) {
   fs.readFile(file, (err, buf) => {
     if (err) return send(res, 404, 'לא נמצא');
     const ext = path.extname(file);
+    if (ext === '.html') buf = Buffer.from(buf.toString('utf8').replaceAll('__V__', VERSION));
     const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
     if (['.html', '.css', '.js', '.ics'].includes(ext)) {
       // קבצי האתר: הדפדפן תמיד בודק מול השרת (ETag), כך שעדכונים מגיעים מיד ולא נתקעים בזיכרון
