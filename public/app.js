@@ -59,6 +59,23 @@
     if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !e.target.closest('input, textarea')) el.blur();
   }, { passive: true });
 
+  // ---- מקלדת נפתחת: הדף זז כך שהשדה תמיד נראה מעל המקלדת ----
+  const vv = window.visualViewport;
+  const isField = (el) => el && /^(INPUT|TEXTAREA)$/.test(el.tagName);
+  const reveal = () => {
+    const el = document.activeElement;
+    if (isField(el)) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+  const keyboardSync = () => {
+    // גובה המקלדת = ההפרש בין גובה החלון לגובה האזור הנראה בפועל
+    const kb = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+    document.documentElement.style.setProperty('--kb', kb + 'px');
+    if (kb > 0) setTimeout(reveal, 60);
+  };
+  if (vv) vv.addEventListener('resize', keyboardSync);
+  document.addEventListener('focusin', (e) => { if (isField(e.target)) { setTimeout(keyboardSync, 120); setTimeout(reveal, 400); } });
+  document.addEventListener('focusout', () => setTimeout(keyboardSync, 150));
+
   // ---- מסך "כבר נרשמת" / "תודה" ----
   function showDone(rec, justSent) {
     const box = $('#thanks');
