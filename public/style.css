@@ -107,8 +107,7 @@ input:focus{outline:3px solid var(--b)}
 .choice{display:grid; gap:12px}
 .link{background:none; border:0; font:inherit; color:#5a4630; text-decoration:underline; cursor:pointer; align-self:center}
 .counter{display:flex; align-items:center; justify-content:center; gap:22px}
-.counter input{font-family:'Permanent Marker',cursive; font-size:64px; width:90px; text-align:center; border:0; border-bottom:4px solid var(--ink); border-radius:0; background:transparent; padding:0 0 2px; caret-color:transparent}
-.counter input:focus{outline:0; border-bottom-color:var(--b)}
+.counter output{font-family:'Permanent Marker',cursive; font-size:64px; min-width:70px; text-align:center; user-select:none; -webkit-user-select:none}
 .round{width:58px; height:58px; border-radius:50%; border:3px solid var(--ink); background:var(--y); font-size:34px; font-weight:800; cursor:pointer; box-shadow:3px 3px 0 var(--ink); line-height:1}
 .hint{margin:0; text-align:center; font-size:16px}
 .err{color:var(--r); font-weight:700; margin:8px 0 0; min-height:1em; text-align:center}

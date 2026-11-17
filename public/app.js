@@ -43,24 +43,12 @@
   }));
 
   const render = () => {
-    $('#extra').value = extra;
+    $('#extra').textContent = extra;
     $('#total').textContent = extra === 0 ? 'מגיע/ה לבד' : `סה"כ ${extra + 1} אנשים`;
   };
   $('#plus').addEventListener('click', () => { extra = Math.min(9, extra + 1); render(); });
   $('#minus').addEventListener('click', () => { extra = Math.max(0, extra - 1); render(); });
   render();
-
-  const extraEl = $('#extra');
-  extraEl.addEventListener('focus', () => setTimeout(() => extraEl.select(), 0)); // הקלדה מחליפה את הערך
-  extraEl.addEventListener('input', () => {
-    const raw = extraEl.value;
-    const d = raw.replace(/\D/g, '').slice(-1); // רק ספרה אחת (0-9), בלי הודעה
-    if (d === '' && raw !== '') { extraEl.value = String(extra); return; } // הוקלדה אות – מתעלמים, הערך נשאר
-    extra = d === '' ? 0 : parseInt(d, 10);
-    extraEl.value = d; // מותר שיהיה ריק בזמן מחיקה
-    $('#total').textContent = extra === 0 ? 'מגיע/ה לבד' : `סה"כ ${extra + 1} אנשים`;
-  });
-  extraEl.addEventListener('blur', render);
 
   // Enter / "סיום" במקלדת סוגר את המקלדת בלבד. לחיצה מחוץ לשדה סוגרת אותה גם כן.
   form.querySelectorAll('input').forEach((i) => i.addEventListener('keydown', (e) => {
