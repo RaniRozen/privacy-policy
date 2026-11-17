@@ -165,3 +165,5 @@ input:focus{outline:3px solid var(--b)}
 
 /* חסימת צביטה בכל רכיב (גלילה עדיין אפשרית) */
 *{touch-action:pan-x pan-y}
+
+.registered .banner{display:none}

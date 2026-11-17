@@ -19,6 +19,7 @@
 
   const show = (id, focus = true) => {
     form.querySelectorAll('.step').forEach((s) => s.classList.toggle('on', s.dataset.step === id));
+    document.body.classList.toggle('registered', id === 'done'); // מי שכבר נרשם לא צריך לראות "אנא אשרו הגעה"
     err.textContent = '';
     const f = form.querySelector('.step.on input, .step.on .btn');
     if (f && focus && id !== 'done') f.focus({ preventScroll: true });
