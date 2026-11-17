@@ -111,3 +111,9 @@ input:focus{outline:3px solid var(--b)}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 @media (max-width:480px){.palm{font-size:70px; top:150px; opacity:.8}.skate{display:none}}
+
+/* ---- הוספה ליומן ---- */
+.cal{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:8px; margin:12px 0 2px; font-weight:700; font-size:15px}
+.cal a{background:var(--b); color:#fff; text-decoration:none; padding:7px 14px; border:2px solid var(--ink); border-radius:10px; box-shadow:2px 2px 0 var(--ink); font-weight:800}
+.cal a:active{transform:translate(2px,2px); box-shadow:none}
+.step[data-step="done"] .cal{margin:4px 0}

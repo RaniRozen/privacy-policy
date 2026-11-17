@@ -1,0 +1,20 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Rani Bar Mitzvah//HE
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:rani-bar-mitzvah-20261203@onrender.com
+DTSTAMP:20261117T120000Z
+DTSTART:20261203T080000Z
+DTEND:20261203T113000Z
+SUMMARY:בר המצווה של רני 🎉
+LOCATION:בית הכנסת נווה שכטר\, שלוש 42 נווה צדק\, תל אביב
+DESCRIPTION:10:00 קבלת פנים ברחבה\n10:30 טקס העלייה לתורה בבית הכנסת\n11:30 ארוחת בראנץ' בקומה העליונה\n12:30 טקס\, ברכות וקטעים אמנותיים
+BEGIN:VALARM
+TRIGGER:-P1D
+ACTION:DISPLAY
+DESCRIPTION:מחר בר המצווה של רני!
+END:VALARM
+END:VEVENT
+END:VCALENDAR
