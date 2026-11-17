@@ -1,0 +1,184 @@
+// שרת אישורי הגעה לבר מצווה של רני – ללא תלויות חיצוניות (Node 18+)
+'use strict';
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const PORT = process.env.PORT || 3000;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'rsvps.json');
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  ADMIN_PASSWORD = crypto.randomBytes(6).toString('hex');
+  console.warn('\n⚠️  לא הוגדר ADMIN_PASSWORD. סיסמה זמנית לריצה הזו בלבד: ' + ADMIN_PASSWORD + '\n');
+}
+// מפתח החתימה נגזר מהסיסמה – שינוי סיסמה מנתק אוטומטית את כל החיבורים הקיימים
+const SECRET = crypto.createHash('sha256').update('rani-bm|' + ADMIN_PASSWORD).digest();
+const SESSION_MS = 1000 * 60 * 60 * 12;
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+let rsvps = [];
+try { rsvps = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { rsvps = []; }
+
+function save() {
+  const tmp = DATA_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(rsvps, null, 2));
+  fs.renameSync(tmp, DATA_FILE);
+}
+
+// ---------- עזרים ----------
+const safeEq = (a, b) => {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+};
+const sign = (v) => crypto.createHmac('sha256', SECRET).update(v).digest('hex');
+function makeToken() {
+  const exp = String(Date.now() + SESSION_MS);
+  return exp + '.' + sign(exp);
+}
+function validToken(tok) {
+  if (!tok) return false;
+  const [exp, sig] = tok.split('.');
+  if (!exp || !sig || !safeEq(sig, sign(exp))) return false;
+  return Number(exp) > Date.now();
+}
+function getCookie(req, name) {
+  const m = (req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(name + '='));
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : '';
+}
+const isAdmin = (req) => validToken(getCookie(req, 'admin'));
+const ipOf = (req) => (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+
+// הגבלת קצב פשוטה בזיכרון
+const buckets = new Map();
+function limited(key, max, windowMs) {
+  const now = Date.now();
+  const arr = (buckets.get(key) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  buckets.set(key, arr);
+  return arr.length > max;
+}
+setInterval(() => buckets.clear(), 1000 * 60 * 60).unref();
+
+function send(res, code, body, headers = {}) {
+  const isObj = typeof body === 'object' && !Buffer.isBuffer(body);
+  res.writeHead(code, {
+    'Content-Type': isObj ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...headers,
+  }, undefined);
+  res.end(isObj ? JSON.stringify(body) : body);
+}
+
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > 10_000) { reject(new Error('too big')); req.destroy(); }
+    });
+    req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch (e) { reject(e); } });
+    req.on('error', reject);
+  });
+}
+
+const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
+
+// ---------- ראוטים ----------
+async function handleApi(req, res, url) {
+  // אישור הגעה (ציבורי)
+  if (req.method === 'POST' && url.pathname === '/api/rsvp') {
+    if (limited('rsvp:' + ipOf(req), 20, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות, נסו שוב מאוחר יותר' });
+    let b;
+    try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
+    const name = clean(b.name, 60);
+    const attending = b.attending === true || b.attending === 'yes';
+    const extra = attending ? Math.max(0, Math.min(20, parseInt(b.extra, 10) || 0)) : 0;
+    const note = clean(b.note, 300);
+    if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
+    const now = new Date().toISOString();
+    const existing = rsvps.find((r) => r.name.toLowerCase() === name.toLowerCase());
+    if (existing) Object.assign(existing, { attending, extra, note, updatedAt: now });
+    else rsvps.push({ id: crypto.randomUUID(), name, attending, extra, note, createdAt: now, updatedAt: now });
+    save();
+    return send(res, 200, { ok: true });
+  }
+
+  // כניסת מנהל
+  if (req.method === 'POST' && url.pathname === '/api/admin/login') {
+    const ip = ipOf(req);
+    if (limited('login:' + ip, 8, 15 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות' });
+    let b;
+    try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
+    if (!safeEq(b.password || '', ADMIN_PASSWORD)) return send(res, 401, { error: 'סיסמה שגויה' });
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    return send(res, 200, { ok: true }, {
+      'Set-Cookie': `admin=${makeToken()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${secure}`,
+    });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
+    return send(res, 200, { ok: true }, { 'Set-Cookie': 'admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
+  }
+
+  // מכאן והלאה – מנהל בלבד
+  if (!url.pathname.startsWith('/api/admin/')) return send(res, 404, { error: 'not found' });
+  if (!isAdmin(req)) return send(res, 401, { error: 'unauthorized' });
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/list') return send(res, 200, { rsvps });
+
+  if (req.method === 'GET' && url.pathname === '/api/admin/export.csv') {
+    const esc = (v) => '"' + String(v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';
+    const rows = [['שם', 'סטטוס', 'מלווים', 'סה"כ אנשים', 'הערה', 'תאריך']].concat(
+      rsvps.map((r) => [r.name, r.attending ? 'מגיע/ה' : 'לא מגיע/ה', r.extra, r.attending ? 1 + r.extra : 0, r.note, r.updatedAt]));
+    return send(res, 200, '﻿' + rows.map((r) => r.map(esc).join(',')).join('\n'), {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="rani-rsvps.csv"',
+    });
+  }
+
+  if (req.method === 'DELETE' && url.pathname.startsWith('/api/admin/rsvp/')) {
+    const id = url.pathname.split('/').pop();
+    const before = rsvps.length;
+    rsvps = rsvps.filter((r) => r.id !== id);
+    if (rsvps.length !== before) save();
+    return send(res, 200, { ok: true });
+  }
+  return send(res, 404, { error: 'not found' });
+}
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon',
+};
+
+function serveStatic(req, res, url) {
+  let p = decodeURIComponent(url.pathname);
+  if (p === '/') p = '/index.html';
+  if (p === '/admin') p = '/admin.html';
+  const file = path.normalize(path.join(PUBLIC_DIR, p));
+  if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 403, 'forbidden');
+  fs.readFile(file, (err, buf) => {
+    if (err) return send(res, 404, 'לא נמצא');
+    const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'public, max-age=300' };
+    if (p === '/admin.html') { headers['X-Robots-Tag'] = 'noindex, nofollow'; headers['Cache-Control'] = 'no-store'; }
+    res.writeHead(200, headers);
+    res.end(buf);
+  });
+}
+
+http.createServer(async (req, res) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  try {
+    const url = new URL(req.url, 'http://x');
+    if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
+    return serveStatic(req, res, url);
+  } catch (e) {
+    console.error(e);
+    send(res, 500, { error: 'שגיאת שרת' });
+  }
+}).listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '   (ניהול: /admin)'));

@@ -1,0 +1,8 @@
+{
+  "name": "rani-bar-mitzvah-rsvp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "אתר הזמנה ואישורי הגעה לבר המצווה של רני",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

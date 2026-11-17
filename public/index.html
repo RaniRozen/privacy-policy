@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>הזמנה לבר המצווה של רני</title>
+<meta name="description" content="מוזמנים לבר המצווה של רני – 03.12.26 בבית הכנסת נווה שכטר">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Rubik:wght@400;500;700;800&family=Karantina:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<div class="palm" aria-hidden="true">🌴</div>
+<div class="skate" aria-hidden="true"></div>
+
+<main class="wrap">
+  <div class="polaroids">
+    <figure class="pol p1"><img src="photos/photo1.jpg" alt="" onerror="this.remove()"></figure>
+    <figure class="pol p2"><img src="photos/photo2.jpg" alt="" onerror="this.remove()"></figure>
+    <figure class="pol p3"><img src="photos/photo3.jpg" alt="" onerror="this.remove()"></figure>
+  </div>
+
+  <section class="paper title">
+    <div class="crown">♛</div>
+    <h1><span class="rani">RANI'S</span><span class="bm">BAR-MITZVAH</span></h1>
+    <div class="underline"></div>
+  </section>
+
+  <section class="paper info">
+    <div class="when">
+      <span dir="ltr">📅 03.12.26</span><b class="sep"></b><span dir="ltr">🕙 10:00 am</span>
+    </div>
+    <div class="where">
+      <div class="place">📍 בית הכנסת נווה שכטר</div>
+      <small>(שלוש 42 נווה צדק)</small>
+      <a class="nav" href="https://waze.com/ul?q=%D7%A9%D7%9C%D7%95%D7%A9%2042%20%D7%A0%D7%95%D7%95%D7%94%20%D7%A6%D7%93%D7%A7%20%D7%AA%D7%9C%20%D7%90%D7%91%D7%99%D7%91&navigate=yes" target="_blank" rel="noopener">ניווט ב-Waze</a>
+    </div>
+    <div class="brush"></div>
+
+    <ul class="sched">
+      <li><div class="txt"><h3>ברחבה –</h3><p>נישנושים ומינגלינג</p></div><span class="time y">10:00</span></li>
+      <li><div class="txt"><h3>בבית הכנסת –</h3><p>טקס העלייה לתורה של רני</p></div><span class="time b">10:30</span></li>
+      <li><div class="txt"><h3>בקומה העליונה –</h3><p>ארוחת בראנץ' מפנקת של <em>Lorenze &amp; Mintz</em></p></div><span class="time y">11:30</span></li>
+      <li><div class="txt"><h3>טקס, ברכות, קטעים</h3><p>אמנותיים והפתעות</p></div><span class="time b">12:30</span></li>
+    </ul>
+
+    <div class="banner">אנא אשרו הגעה ומספר משתתפים</div>
+
+    <!-- טופס אישור הגעה -->
+    <form id="rsvp" class="rsvp" novalidate>
+      <div class="step on" data-step="1">
+        <label for="name">מה השם שלך?</label>
+        <input id="name" name="name" type="text" maxlength="60" autocomplete="name" placeholder="שם מלא" required>
+        <button type="button" class="btn next">המשך ←</button>
+      </div>
+
+      <div class="step" data-step="2">
+        <label>היי <span id="hi"></span>, האם תגיעו?</label>
+        <div class="choice">
+          <button type="button" class="btn yes" data-v="yes">🎉 כן, מגיעים!</button>
+          <button type="button" class="btn no" data-v="no">😢 לא נוכל להגיע</button>
+        </div>
+        <button type="button" class="link back">→ חזרה</button>
+      </div>
+
+      <div class="step" data-step="3">
+        <label>כמה אנשים מגיעים <u>בנוסף</u> אליך?</label>
+        <div class="counter">
+          <button type="button" class="round" id="minus" aria-label="פחות">−</button>
+          <output id="extra">0</output>
+          <button type="button" class="round" id="plus" aria-label="יותר">+</button>
+        </div>
+        <p class="hint" id="total"></p>
+        <input id="note" type="text" maxlength="300" placeholder="הערה (אופציונלי) – אלרגיות, שאלות...">
+        <button type="submit" class="btn send">שליחה ✓</button>
+        <button type="button" class="link back">→ חזרה</button>
+      </div>
+
+      <div class="step" data-step="no">
+        <label>איזה באסה, נחסר לנו! 💛</label>
+        <input id="note2" type="text" maxlength="300" placeholder="רוצים להשאיר ברכה? (אופציונלי)">
+        <button type="submit" class="btn send">שליחה ✓</button>
+        <button type="button" class="link back">→ חזרה</button>
+      </div>
+
+      <div class="step" data-step="done">
+        <div class="thanks" id="thanks"></div>
+        <button type="button" class="link" id="again">לשינוי התשובה</button>
+      </div>
+      <p class="err" id="err" role="alert"></p>
+    </form>
+
+    <div class="brush"></div>
+    <div class="sign">
+      <span class="heart">♡</span>
+      <div><b>אוהבים ומתרגשים –</b><br>רני, אופיר, עדי, מורין ורוי</div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
