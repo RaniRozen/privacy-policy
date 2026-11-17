@@ -4,7 +4,7 @@
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 html{
-  touch-action:pan-x pan-y; overscroll-behavior:none; /* גלילה בלבד – בלי זום בצביטה או בלחיצה כפולה */
+  touch-action:pan-x pan-y; /* גלילה בלבד – בלי זום בצביטה או בלחיצה כפולה */
   -webkit-text-size-adjust:100%;
   background-color:#a24c33;
   background-image:
