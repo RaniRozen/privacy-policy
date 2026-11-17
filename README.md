@@ -24,3 +24,8 @@
 ## התאמות
 - תמונות: `public/photos/photo1.jpg` ... `photo3.jpg` (מוחלפות בקבצים משלכם).
 - טקסטים ולו"ז: `public/index.html`.
+
+## אבטחה – סיכום
+- סיסמת ניהול חזקה (12+ תווים) ב-`ADMIN_PASSWORD`; החליפו אותה אם נחשפה.
+- טוקן Upstash: אם נחשף – Reset Password ב-Upstash ועדכון ב-Render.
+- הגנות: עוגייה חתומה HttpOnly+SameSite=Strict, בדיקת Origin, CSP, הגבלת קצב, מגבלת גודל בקשה ותקרת רשומות.

@@ -15,6 +15,7 @@ if (!ADMIN_PASSWORD) {
   ADMIN_PASSWORD = crypto.randomBytes(6).toString('hex');
   console.warn('\n⚠️  לא הוגדר ADMIN_PASSWORD. סיסמה זמנית לריצה הזו בלבד: ' + ADMIN_PASSWORD + '\n');
 }
+if (process.env.ADMIN_PASSWORD && ADMIN_PASSWORD.length < 12) console.warn('⚠️  ADMIN_PASSWORD קצרה מ-12 תווים – מומלץ סיסמה חזקה יותר.');
 // מפתח החתימה נגזר מהסיסמה – שינוי סיסמה מנתק אוטומטית את כל החיבורים הקיימים
 const SECRET = crypto.createHash('sha256').update('rani-bm|' + ADMIN_PASSWORD).digest();
 const SESSION_MS = 1000 * 60 * 60 * 12;
@@ -104,7 +105,8 @@ function getCookie(req, name) {
   return m ? decodeURIComponent(m.slice(name.length + 1)) : '';
 }
 const isAdmin = (req) => validToken(getCookie(req, 'admin'));
-const ipOf = (req) => (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+// ה-proxy של Render מוסיף את כתובת הלקוח האמיתית בסוף הרשימה; הערכים שלפניה נשלטים ע"י הלקוח ולכן לא סומכים עליהם
+const ipOf = (req) => (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',').pop().trim();
 
 // הגבלת קצב פשוטה בזיכרון
 const buckets = new Map();
@@ -134,7 +136,13 @@ function readJson(req) {
       data += c;
       if (data.length > 10_000) { reject(new Error('too big')); req.destroy(); }
     });
-    req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch (e) { reject(e); } });
+    req.on('end', () => {
+      try {
+        const j = JSON.parse(data || '{}');
+        if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('not an object');
+        resolve(j);
+      } catch (e) { reject(e); }
+    });
     req.on('error', reject);
   });
 }
@@ -145,6 +153,16 @@ const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim()
 
 // ---------- ראוטים ----------
 async function handleApi(req, res, url) {
+  // הגנת CSRF: בקשות שמשנות מצב חייבות להגיע מהאתר עצמו (Origin זהה) וב-JSON
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    const origin = req.headers.origin;
+    if (origin) {
+      let same = false;
+      try { same = new URL(origin).host === req.headers.host; } catch { /* מקור לא תקין */ }
+      if (!same) return send(res, 403, { error: 'forbidden' });
+    }
+    if (req.method !== 'DELETE' && !/^application\/json/i.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'unsupported' });
+  }
   const open = url.pathname === '/api/admin/login' || url.pathname === '/api/admin/logout';
   if (!ready && !open) return send(res, 503, { error: 'האתר מתעורר, נסו שוב בעוד רגע' });
   // אישור הגעה (ציבורי)
@@ -163,7 +181,10 @@ async function handleApi(req, res, url) {
     let existing = device ? rsvps.find((r) => r.device === device) : null;
     if (!existing) existing = rsvps.find((r) => !r.device && r.name.toLowerCase() === name.toLowerCase());
     if (existing) Object.assign(existing, { name, attending, extra, note, updatedAt: now, ...(device && { device }) });
-    else rsvps.push({ id: crypto.randomUUID(), device, name, attending, extra, note, createdAt: now, updatedAt: now });
+    else {
+      if (rsvps.length >= 3000) return send(res, 503, { error: 'האתר עמוס כרגע, נסו שוב מאוחר יותר' }); // הגנה מפני הצפה
+      rsvps.push({ id: crypto.randomUUID(), device, name, attending, extra, note, createdAt: now, updatedAt: now });
+    }
     if (!(await saveOr503(res))) return;
     return send(res, 200, { ok: true });
   }
@@ -200,7 +221,7 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/admin/list') return send(res, 200, { rsvps: rsvps.map(publicRsvp) });
 
   if (req.method === 'GET' && url.pathname === '/api/admin/export.csv') {
-    const esc = (v) => '"' + String(v).replace(/"/g, '""').replace(/^([=+\-@])/, "'$1") + '"';
+    const esc = (v) => '"' + String(v).replace(/"/g, '""').replace(/^([=+\-@\t\r])/, "'$1") + '"';
     const rows = [['שם', 'סטטוס', 'מלווים', 'סה"כ אנשים', 'הערה', 'תאריך']].concat(
       rsvps.map((r) => [r.name, r.attending ? 'מגיע/ה' : 'לא מגיע/ה', r.extra, r.attending ? 1 + r.extra : 0, r.note, r.updatedAt]));
     return send(res, 200, '﻿' + rows.map((r) => r.map(esc).join(',')).join('\n'), {
@@ -279,6 +300,9 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   if (req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
@@ -292,6 +316,11 @@ const server = http.createServer(async (req, res) => {
     send(res, 500, { error: 'שגיאת שרת' });
   }
 });
+server.headersTimeout = 15000;
+server.requestTimeout = 30000;
+server.keepAliveTimeout = 5000;
+server.maxHeadersCount = 50;
+
 // השרת מתחיל להאזין מיד (כדי שהאתר יעלה מהר); ה-API מחזיר 503 עד שהנתונים נטענו, עם ניסיונות חוזרים
 server.listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '   (ניהול: /admin)'));
 (async () => {
