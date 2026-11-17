@@ -62,21 +62,21 @@
   // ---- מקלדת נפתחת: הדף זז כך שהשדה תמיד נראה מעל המקלדת ----
   const vv = window.visualViewport;
   const isField = (el) => el && /^(INPUT|TEXTAREA)$/.test(el.tagName);
-  let revealing = false;
+  let settleTimer = null;
 
-  // גולל כך שהשדה יהיה במרכז האזור שנשאר גלוי (מעל המקלדת), לפי visualViewport ולא לפי גובה החלון המלא
+  // גלילה מינימלית, פעם אחת, אחרי שהמקלדת התייצבה: רק אם השדה מוסתר או קרוב מדי לקצה
   const reveal = () => {
     const el = document.activeElement;
-    if (!isField(el) || revealing) return;
+    if (!isField(el)) return;
     const r = el.getBoundingClientRect();
-    const top = vv ? vv.offsetTop : 0;
-    const h = vv ? vv.height : window.innerHeight;
-    const delta = r.top - (top + h / 2 - r.height / 2);
-    if (Math.abs(delta) < 8) return;
-    revealing = true;
-    window.scrollBy({ top: delta, behavior: 'smooth' });
-    setTimeout(() => { revealing = false; }, 250);
+    const top = (vv ? vv.offsetTop : 0) + 16;
+    const bottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - 24;
+    let delta = 0;
+    if (r.bottom > bottom) delta = r.bottom - bottom;
+    else if (r.top < top) delta = r.top - top;
+    if (Math.abs(delta) >= 4) window.scrollBy({ top: delta, behavior: 'smooth' });
   };
+  const scheduleReveal = (ms) => { clearTimeout(settleTimer); settleTimer = setTimeout(reveal, ms); };
 
   const keyboardSync = () => {
     // גובה המקלדת = ההפרש בין גובה החלון לגובה האזור הנראה; אם הדפדפן לא דיווח – מניחים גובה סביר
@@ -85,17 +85,10 @@
     if (!isField(document.activeElement) && kb < 100) kb = 0;
     document.documentElement.style.setProperty('--kb', kb + 'px');
   };
-  const onFocus = () => {
-    keyboardSync();
-    // המקלדת נפתחת באנימציה – מתאימים כמה פעמים עד שהיא יציבה
-    [80, 250, 500, 800].forEach((ms) => setTimeout(() => { keyboardSync(); reveal(); }, ms));
-  };
-  if (vv) {
-    vv.addEventListener('resize', () => { keyboardSync(); setTimeout(reveal, 60); });
-    vv.addEventListener('scroll', () => setTimeout(reveal, 120));
-  }
-  document.addEventListener('focusin', (e) => { if (isField(e.target)) onFocus(); });
-  document.addEventListener('focusout', () => setTimeout(keyboardSync, 150));
+  // כל שינוי בגובה האזור הגלוי מאפס את ההמתנה, כך שהגלילה קורית רק כשהמקלדת סיימה להיפתח
+  if (vv) vv.addEventListener('resize', () => { keyboardSync(); scheduleReveal(280); });
+  document.addEventListener('focusin', (e) => { if (isField(e.target)) { keyboardSync(); scheduleReveal(450); } });
+  document.addEventListener('focusout', () => { clearTimeout(settleTimer); setTimeout(keyboardSync, 150); });
 
   // ---- מסך "כבר נרשמת" / "תודה" ----
   function showDone(rec, justSent) {
