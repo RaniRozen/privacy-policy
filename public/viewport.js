@@ -33,7 +33,7 @@
     const check = () => {
       if (busy || Math.abs(vv.scale - 1) < 0.02) return;
       busy = true;
-      meta.setAttribute('content', RESET + ', x=' + Date.now()); // שינוי תוכן כדי לאלץ חישוב מחדש
+      meta.setAttribute('content', RESET);
       setTimeout(() => { meta.setAttribute('content', NORMAL); busy = false; }, 250);
     };
     vv.addEventListener('resize', check);

@@ -114,7 +114,7 @@
     if (res.ok) { $('#pw').value = ''; load(); }
     else $('#lerr').textContent = (await res.json()).error || 'שגיאה';
   });
-  $('#logout').addEventListener('click', async () => { await fetch('/api/admin/logout', { method: 'POST' }); all = []; showLogin(); });
+  $('#logout').addEventListener('click', async () => { await fetch('/api/admin/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); all = []; showLogin(); });
   $('#refresh').addEventListener('click', load);
   $('#q').addEventListener('input', render);
   document.querySelectorAll('.chip').forEach((c) => c.addEventListener('click', () => {
