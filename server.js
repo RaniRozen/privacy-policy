@@ -29,6 +29,7 @@ let ready = false; // נהיה true רק אחרי שהנתונים נטענו, �
 const UP_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const UP_KEY = 'rani:rsvps';
+const MAX_RECORDS = 1000; // מתחת למגבלת הגודל של Upstash החינמי (כ-1MB לערך)
 const useRemote = Boolean(UP_URL && UP_TOKEN);
 
 async function upstash(cmd) {
@@ -36,6 +37,7 @@ async function upstash(cmd) {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + UP_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify(cmd),
+    signal: AbortSignal.timeout(8000), // בלי זה, מסד שלא עונה היה תוקע את כל הכתיבות
   });
   const j = await res.json();
   if (!res.ok || j.error) throw new Error('Upstash: ' + (j.error || res.status));
@@ -53,7 +55,6 @@ async function load() {
   }
 }
 
-let saveChain = Promise.resolve();
 async function withRetry(fn, tries = 3) {
   let last;
   for (let i = 0; i < tries; i++) {
@@ -61,26 +62,41 @@ async function withRetry(fn, tries = 3) {
   }
   throw last;
 }
-// מחזירה הבטחה: נדחית אם השמירה נכשלה, כדי שלא נדווח "הצלחה" כשהנתון לא נשמר
-function save() {
+async function persist(list) {
   if (!useRemote) {
-    try {
-      const tmp = DATA_FILE + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(rsvps, null, 2));
-      fs.renameSync(tmp, DATA_FILE);
-      return Promise.resolve();
-    } catch (e) { return Promise.reject(e); }
+    const tmp = DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+    fs.renameSync(tmp, DATA_FILE);
+    return;
   }
-  const snapshot = JSON.stringify(rsvps);
-  const p = saveChain.then(() => withRetry(() => upstash(['SET', UP_KEY, snapshot])));
-  saveChain = p.catch(() => {}); // השרשרת ממשיכה גם אחרי כישלון
+  const snapshot = JSON.stringify(list);
+  await withRetry(() => upstash(['SET', UP_KEY, snapshot]));
+}
+
+// שגיאה עם קוד HTTP, שמוחזרת ללקוח כמו שהיא
+class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+
+// כתיבה טרנזקציונלית: כל השינויים מתבצעים בתור (אחד אחרי השני), על עותק.
+// רק אם השמירה הצליחה העותק הופך לנתונים הנוכחיים – כך הזיכרון והמסד אף פעם לא מתפצלים,
+// ואם השמירה נכשלת, השינוי מתבטל והלקוח מקבל שגיאה.
+let txChain = Promise.resolve();
+function mutate(fn) {
+  const run = async () => {
+    const draft = structuredClone(rsvps);
+    const out = fn(draft);
+    await persist(draft);
+    rsvps = draft;
+    return out;
+  };
+  const p = txChain.then(run);
+  txChain = p.catch(() => {});
   return p;
 }
-async function saveOr503(res) {
-  try { await save(); return true; } catch (e) {
-    console.error('שמירה נכשלה:', e.message);
-    send(res, 503, { error: 'השמירה לא הצליחה, נסו שוב בעוד רגע' });
-    return false;
+async function mutateOrReply(res, fn) {
+  try { return { ok: true, out: await mutate(fn) }; } catch (e) {
+    if (e instanceof HttpError) send(res, e.status, { error: e.message });
+    else { console.error('שמירה נכשלה:', e.message); send(res, 503, { error: 'השמירה לא הצליחה, נסו שוב בעוד רגע' }); }
+    return { ok: false };
   }
 }
 
@@ -95,15 +111,18 @@ function makeToken() {
   const exp = String(Date.now() + SESSION_MS);
   return exp + '.' + sign(exp);
 }
+const revoked = new Map(); // חתימות של עוגיות שהמנהל יצא איתן: נחסמות גם אם מישהו העתיק אותן
 function validToken(tok) {
-  if (!tok) return false;
+  if (!tok || typeof tok !== 'string') return false;
   const [exp, sig] = tok.split('.');
   if (!exp || !sig || !safeEq(sig, sign(exp))) return false;
+  if (revoked.has(sig)) return false;
   return Number(exp) > Date.now();
 }
 function getCookie(req, name) {
   const m = (req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(name + '='));
-  return m ? decodeURIComponent(m.slice(name.length + 1)) : '';
+  if (!m) return '';
+  try { return decodeURIComponent(m.slice(name.length + 1)); } catch { return ''; } // עוגייה פגומה = לא מחובר, לא שגיאת שרת
 }
 const isAdmin = (req) => validToken(getCookie(req, 'admin'));
 // ה-proxy של Render מוסיף את כתובת הלקוח האמיתית בסוף הרשימה; הערכים שלפניה נשלטים ע"י הלקוח ולכן לא סומכים עליהם
@@ -118,7 +137,25 @@ function limited(key, max, windowMs) {
   buckets.set(key, arr);
   return arr.length > max;
 }
-setInterval(() => buckets.clear(), 1000 * 60 * 60).unref();
+// ספירת כישלונות בלבד (כניסה מוצלחת לא "שורפת" מכסה). חוסמים לפני בדיקת הסיסמה כדי שגם ניחוש נכון בזמן נעילה יידחה.
+function blocked(key, max, windowMs) {
+  const now = Date.now();
+  return (buckets.get(key) || []).filter((t) => now - t < windowMs).length >= max;
+}
+function recordFail(key) {
+  const arr = buckets.get(key) || [];
+  arr.push(Date.now());
+  buckets.set(key, arr);
+}
+// ניקוי שוטף של רשומות ישנות (במקום לאפס הכול, כדי שחלון הנעילה לא יתאפס בשעה עגולה)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, arr] of buckets) {
+    const fresh = arr.filter((t) => now - t < 60 * 60 * 1000);
+    if (fresh.length) buckets.set(k, fresh); else buckets.delete(k);
+  }
+  for (const [s, exp] of revoked) if (exp < now) revoked.delete(s);
+}, 5 * 60 * 1000).unref();
 
 function send(res, code, body, headers = {}) {
   const isObj = typeof body === 'object' && !Buffer.isBuffer(body);
@@ -133,6 +170,7 @@ function send(res, code, body, headers = {}) {
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let data = '';
+    req.setEncoding('utf8'); // בלי זה, אות עברית שנחתכת בין שני חלקי נתונים הייתה מתקלקלת
     req.on('data', (c) => {
       data += c;
       if (data.length > 10_000) { reject(new Error('too big')); req.destroy(); }
@@ -150,7 +188,9 @@ function readJson(req) {
 
 const validDevice = (d) => (typeof d === 'string' && /^[a-zA-Z0-9-]{16,64}$/.test(d) ? d : '');
 const publicRsvp = ({ device, ...rest }) => rest; // מזהה המכשיר לא יוצא החוצה, גם לא למנהל
-const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, n);
+// מסירים תווי בקרה, תגיות HTML, ותווי כיווניות/רוחב-אפס (מונעים זיוף שמות בתצוגה, למשל היפוך טקסט)
+const clean = (s, n) => (typeof s === 'string' || typeof s === 'number' ? String(s) : '')
+  .normalize('NFC').replace(/[\u0000-\u001f\u007f-\u009f<>\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // ---------- ראוטים ----------
 async function handleApi(req, res, url) {
@@ -168,7 +208,8 @@ async function handleApi(req, res, url) {
   if (!ready && !open) return send(res, 503, { error: 'האתר מתעורר, נסו שוב בעוד רגע' });
   // אישור הגעה (ציבורי)
   if (req.method === 'POST' && url.pathname === '/api/rsvp') {
-    if (limited('rsvp:' + ipOf(req), 60, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות, נסו שוב מאוחר יותר' });
+    // מגבלה נדיבה לפי כתובת (כתובת אחת יכולה להיות משותפת להרבה אורחים באותה רשת/אזור)
+    if (limited('rsvp:' + ipOf(req), 300, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות, נסו שוב מאוחר יותר' });
     let b;
     try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
     const name = clean(b.name, 60);
@@ -176,23 +217,26 @@ async function handleApi(req, res, url) {
     const extra = attending ? Math.max(0, Math.min(9, parseInt(b.extra, 10) || 0)) : 0;
     const note = clean(b.note, 300);
     if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
-    const now = new Date().toISOString();
     const device = validDevice(b.device);
-    // קודם לפי מכשיר; אחרת לפי שם – אבל רק אם הרשומה עוד לא שייכת למכשיר אחר
-    let existing = device ? rsvps.find((r) => r.device === device) : null;
-    if (!existing) existing = rsvps.find((r) => !r.device && r.name.toLowerCase() === name.toLowerCase());
-    if (existing) Object.assign(existing, { name, attending, extra, note, updatedAt: now, ...(device && { device }) });
-    else {
-      if (rsvps.length >= 3000) return send(res, 503, { error: 'האתר עמוס כרגע, נסו שוב מאוחר יותר' }); // הגנה מפני הצפה
-      rsvps.push({ id: crypto.randomUUID(), device, name, attending, extra, note, createdAt: now, updatedAt: now });
-    }
-    if (!(await saveOr503(res))) return;
+    if (device && limited('dev:' + device, 30, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות, נסו שוב מאוחר יותר' });
+    const r = await mutateOrReply(res, (list) => {
+      const now = new Date().toISOString();
+      // קודם לפי מכשיר; אחרת לפי שם, אבל רק אם הרשומה עוד לא שייכת למכשיר אחר
+      let existing = device ? list.find((x) => x.device === device) : null;
+      if (!existing) existing = list.find((x) => !x.device && x.name.toLowerCase() === name.toLowerCase());
+      if (existing) Object.assign(existing, { name, attending, extra, note, updatedAt: now, ...(device && { device }) });
+      else {
+        if (list.length >= MAX_RECORDS) throw new HttpError(503, 'האתר עמוס כרגע, נסו שוב מאוחר יותר'); // הגנה מפני הצפה
+        list.push({ id: crypto.randomUUID(), device, name, attending, extra, note, createdAt: now, updatedAt: now });
+      }
+    });
+    if (!r.ok) return;
     return send(res, 200, { ok: true });
   }
 
   // "האם המכשיר הזה כבר נרשם?" – מחזיר רק את הרשומה של אותו מכשיר
   if (req.method === 'GET' && url.pathname === '/api/rsvp/mine') {
-    if (limited('mine:' + ipOf(req), 600, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי בקשות' });
+    if (limited('mine:' + ipOf(req), 5000, 60 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי בקשות' });
     const device = validDevice(url.searchParams.get('device'));
     const r = device && rsvps.find((x) => x.device === device);
     return send(res, 200, { rsvp: r ? { name: r.name, attending: r.attending, extra: r.extra, note: r.note } : null });
@@ -200,18 +244,24 @@ async function handleApi(req, res, url) {
 
   // כניסת מנהל
   if (req.method === 'POST' && url.pathname === '/api/admin/login') {
-    const ip = ipOf(req);
-    // גם לפי IP וגם כללי (למקרה שמישהו מזייף כתובת IP): כך אי אפשר לנחש סיסמה בכוח
-    if (limited('login:' + ip, 8, 15 * 60 * 1000) || limited('login:all', 40, 15 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות' });
+    const ipKey = 'fail:' + ipOf(req);
+    // חסימה לפי כתובת וגם כללית (למקרה של התקפה מהרבה כתובות), לפני בדיקת הסיסמה
+    if (blocked(ipKey, 8, 15 * 60 * 1000) || blocked('fail:all', 60, 15 * 60 * 1000)) return send(res, 429, { error: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות' });
     let b;
-    try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
-    if (typeof b.password !== 'string' || !safeEq(b.password, ADMIN_PASSWORD)) return send(res, 401, { error: 'סיסמה שגויה' });
-    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    try { b = await readJson(req); } catch { recordFail(ipKey); return send(res, 400, { error: 'בקשה לא תקינה' }); }
+    if (typeof b.password !== 'string' || !safeEq(b.password, ADMIN_PASSWORD)) {
+      recordFail(ipKey); recordFail('fail:all');
+      return send(res, 401, { error: 'סיסמה שגויה' });
+    }
+    const secure = (req.headers['x-forwarded-proto'] === 'https' || process.env.RENDER) ? '; Secure' : '';
     return send(res, 200, { ok: true }, {
       'Set-Cookie': `admin=${makeToken()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${secure}`,
     });
   }
   if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
+    const tok = getCookie(req, 'admin');
+    const [exp, sig] = tok.split('.');
+    if (sig && validToken(tok)) revoked.set(sig, Number(exp)); // מבטלים את העוגייה גם בשרת
     return send(res, 200, { ok: true }, { 'Set-Cookie': 'admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
   }
 
@@ -234,21 +284,29 @@ async function handleApi(req, res, url) {
   if (req.method === 'PUT' && url.pathname.startsWith('/api/admin/rsvp/')) {
     let b;
     try { b = await readJson(req); } catch { return send(res, 400, { error: 'בקשה לא תקינה' }); }
-    const r = rsvps.find((x) => x.id === url.pathname.split('/').pop());
-    if (!r) return send(res, 404, { error: 'לא נמצא' });
+    const id = url.pathname.split('/').pop();
     const name = clean(b.name, 60);
     if (name.length < 2) return send(res, 400, { error: 'נא להזין שם' });
     const attending = b.attending === true;
-    Object.assign(r, { name, attending, extra: attending ? Math.max(0, Math.min(9, parseInt(b.extra, 10) || 0)) : 0, updatedAt: new Date().toISOString() });
-    if (!(await saveOr503(res))) return;
-    return send(res, 200, { ok: true, rsvp: publicRsvp(r) });
+    const extra = attending ? Math.max(0, Math.min(9, parseInt(b.extra, 10) || 0)) : 0;
+    const r = await mutateOrReply(res, (list) => {
+      const t = list.find((x) => x.id === id);
+      if (!t) throw new HttpError(404, 'לא נמצא');
+      Object.assign(t, { name, attending, extra, updatedAt: new Date().toISOString() });
+      return publicRsvp(t);
+    });
+    if (!r.ok) return;
+    return send(res, 200, { ok: true, rsvp: r.out });
   }
 
   if (req.method === 'DELETE' && url.pathname.startsWith('/api/admin/rsvp/')) {
     const id = url.pathname.split('/').pop();
-    const before = rsvps.length;
-    rsvps = rsvps.filter((r) => r.id !== id);
-    if (rsvps.length !== before && !(await saveOr503(res))) return;
+    const r = await mutateOrReply(res, (list) => {
+      const i = list.findIndex((x) => x.id === id);
+      if (i === -1) throw new HttpError(404, 'לא נמצא');
+      list.splice(i, 1);
+    });
+    if (!r.ok) return;
     return send(res, 200, { ok: true });
   }
   return send(res, 404, { error: 'not found' });
@@ -256,7 +314,7 @@ async function handleApi(req, res, url) {
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.ics': 'text/calendar; charset=utf-8',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ics': 'text/calendar; charset=utf-8',
 };
 
 // גרסה שמשתנה בכל שינוי בקבצי האתר – מוזרקת לכתובות ה-CSS/JS כדי שדפדפן לעולם לא יציג קבצים ישנים
@@ -274,8 +332,11 @@ const gzCache = new Map();
 function serveStatic(req, res, url) {
   let p;
   try { p = decodeURIComponent(url.pathname); } catch { return send(res, 400, 'בקשה לא תקינה'); }
+  if (p.includes('\0')) return send(res, 400, 'בקשה לא תקינה');
+  if (p.length > 1 && p.endsWith('/')) p = p.replace(/\/+$/, '') || '/'; // /admin/ זהה ל-/admin
   if (p === '/') p = '/index.html';
   if (p === '/admin') p = '/admin.html';
+  if (/(^|\/)\./.test(p)) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(NOT_FOUND); } // אין חשיפת קבצים נסתרים
   const file = path.normalize(path.join(PUBLIC_DIR, p));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 403, 'forbidden');
   fs.readFile(file, (err, buf) => {
@@ -300,7 +361,7 @@ function serveStatic(req, res, url) {
         return res.end(z);
       }
     } else {
-      headers['Cache-Control'] = 'public, max-age=86400'; // תמונות
+      headers['Cache-Control'] = ext === '.woff2' ? 'public, max-age=31536000, immutable' : 'public, max-age=86400'; // גופנים ותמונות
     }
     res.writeHead(200, headers);
     res.end(buf);
@@ -315,7 +376,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   if (req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
   try {
     const url = new URL(req.url, 'http://x');
@@ -346,7 +407,7 @@ server.listen(PORT, () => console.log('רץ על http://localhost:' + PORT + '  
 // סגירה מסודרת (Render שולח SIGTERM בכל פריסה): ממתינים לשמירה שבדרך
 function shutdown() {
   server.close();
-  saveChain.finally(() => process.exit(0));
+  txChain.finally(() => process.exit(0));
   setTimeout(() => process.exit(0), 8000).unref();
 }
 process.on('SIGTERM', shutdown);

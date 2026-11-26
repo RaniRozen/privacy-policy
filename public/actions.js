@@ -64,5 +64,15 @@
   document.querySelectorAll('[data-sheet]').forEach((b) => b.addEventListener('click', () => open(b.dataset.sheet)));
   document.getElementById('sheetClose').addEventListener('click', close);
   bg.addEventListener('click', (ev) => { if (!box.contains(ev.target)) close(); });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !bg.hidden) close(); });
+  document.addEventListener('keydown', (ev) => {
+    if (bg.hidden) return;
+    if (ev.key === 'Escape') { close(); return; }
+    if (ev.key === 'Tab') { // מלכודת מיקוד: Tab מסתובב בתוך החלון בלבד (נגישות מקלדת וקוראי מסך)
+      const items = [...box.querySelectorAll('a[href], button')];
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    }
+  });
 })();

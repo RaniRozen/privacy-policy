@@ -50,7 +50,10 @@
       const del = el('button', { className: 'del', title: 'מחיקה', textContent: '🗑️' });
       del.addEventListener('click', async () => {
         if (!confirm('למחוק את "' + r.name + '"?')) return;
-        await api('/api/admin/rsvp/' + encodeURIComponent(r.id), { method: 'DELETE' });
+        try {
+          const res = await api('/api/admin/rsvp/' + encodeURIComponent(r.id), { method: 'DELETE' });
+          if (!res.ok && res.status !== 404) alert((await res.json().catch(() => ({}))).error || 'המחיקה לא הצליחה, נסו שוב');
+        } catch { return; /* לא מחובר – מסך הכניסה כבר מוצג */ }
         load();
       });
       const edit = el('button', { className: 'edit', title: 'עריכה', textContent: '✏️' });

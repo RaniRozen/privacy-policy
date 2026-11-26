@@ -65,7 +65,8 @@
   }));
   document.addEventListener('touchstart', (e) => {
     const el = document.activeElement;
-    if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !e.target.closest('input, textarea')) el.blur();
+    // לא סוגרים מקלדת כשלוחצים על כפתור/קישור: סגירה באמצע לחיצה מזיזה את הפריסה והכפתור היה מפספס
+    if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && !e.target.closest('input, textarea, button, a, label, select')) el.blur();
   }, { passive: true });
 
   // ---- האורות למעלה דוהים בהדרגה ככל שגוללים, כדי שלא יסתירו את הטקסט ----
