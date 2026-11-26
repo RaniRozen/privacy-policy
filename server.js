@@ -29,6 +29,9 @@ let ready = false; // נהיה true רק אחרי שהנתונים נטענו, �
 const UP_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const UP_KEY = 'rani:rsvps';
+const UP_HISTORY = 'rani:rsvps:history'; // 60 הגרסאות האחרונות של הרשימה (גיבוי אוטומטי בכל שמירה)
+const UP_TRASH = 'rani:rsvps:trash';     // כל רשומה שנמחקה במסך הניהול נשמרת כאן (אפשר לשחזר)
+const HISTORY_KEEP = 60;
 const MAX_RECORDS = 1000; // מתחת למגבלת הגודל של Upstash החינמי (כ-1MB לערך)
 const useRemote = Boolean(UP_URL && UP_TOKEN);
 
@@ -47,10 +50,17 @@ async function upstash(cmd) {
 async function load() {
   if (useRemote) {
     const v = await upstash(['GET', UP_KEY]);
-    rsvps = v ? JSON.parse(v) : [];
+    const parsed = v ? JSON.parse(v) : [];
+    // ערך שאינו רשימה = משהו לא תקין. עדיף שהשרת יסרב לעלות מאשר שידרוס אותו ברשימה ריקה
+    if (!Array.isArray(parsed)) throw new Error('הנתונים במסד אינם רשימה תקינה – לא דורסים');
+    rsvps = parsed;
     console.log('נטענו ' + rsvps.length + ' אישורים מ-Upstash');
   } else {
-    try { rsvps = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { rsvps = []; }
+    try { rsvps = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) {
+      if (e.code === 'ENOENT') rsvps = [];
+      else throw new Error('קובץ הנתונים קיים אך לא נקרא (' + e.message + ') – לא דורסים'); // קובץ פגום לא נדרס ברשימה ריקה
+    }
+    if (!Array.isArray(rsvps)) throw new Error('קובץ הנתונים אינו רשימה תקינה – לא דורסים');
     console.warn('⚠️  אחסון בקובץ מקומי – ב-Render חינמי הוא נמחק בהפעלה מחדש. הגדירו UPSTASH_REDIS_REST_URL/TOKEN.');
   }
 }
@@ -63,14 +73,26 @@ async function withRetry(fn, tries = 3) {
   throw last;
 }
 async function persist(list) {
+  // רשת ביטחון אחרונה: אף פעולה רגילה לא מסירה יותר מרשומה אחת בבת אחת. אם הרשימה "מתכווצת" מעבר לכך – זו תקלה, ולא שומרים.
+  if (list.length < rsvps.length - 1) throw new Error('סירוב לשמור: הרשימה התכווצה מ-' + rsvps.length + ' ל-' + list.length);
   if (!useRemote) {
     const tmp = DATA_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+    const body = JSON.stringify(list, null, 2);
+    fs.writeFileSync(tmp, body);
+    try { if (fs.existsSync(DATA_FILE)) fs.copyFileSync(DATA_FILE, DATA_FILE + '.bak'); } catch { /* גיבוי הוא בונוס */ }
     fs.renameSync(tmp, DATA_FILE);
     return;
   }
   const snapshot = JSON.stringify(list);
   await withRetry(() => upstash(['SET', UP_KEY, snapshot]));
+  // גיבוי היסטוריה: לא קריטי לתהליך, ולכן כשל בו לא מכשיל את הרישום
+  upstash(['LPUSH', UP_HISTORY, snapshot]).then(() => upstash(['LTRIM', UP_HISTORY, 0, HISTORY_KEEP - 1])).catch((e) => console.error('גיבוי היסטוריה נכשל:', e.message));
+}
+// שומר עותק של רשומה שנמחקה (לשחזור). כשל כאן לא מונע את המחיקה אבל נרשם ביומן.
+function archiveDeleted(record) {
+  const entry = JSON.stringify({ deletedAt: new Date().toISOString(), record });
+  if (useRemote) upstash(['LPUSH', UP_TRASH, entry]).catch((e) => console.error('ארכוב רשומה שנמחקה נכשל:', e.message));
+  else { try { fs.appendFileSync(DATA_FILE + '.trash.jsonl', entry + '\n'); } catch (e) { console.error('ארכוב נכשל:', e.message); } }
 }
 
 // שגיאה עם קוד HTTP, שמוחזרת ללקוח כמו שהיא
@@ -271,6 +293,15 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/admin/list') return send(res, 200, { rsvps: rsvps.map(publicRsvp) });
 
+  // גיבוי מלא להורדה (כולל כל השדות), לשחזור ידני אם יהיה צורך
+  if (req.method === 'GET' && url.pathname === '/api/admin/backup.json') {
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    return send(res, 200, JSON.stringify(rsvps, null, 2), {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="rani-backup-${stamp}.json"`,
+    });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/admin/export.csv') {
     const esc = (v) => '"' + String(v).replace(/"/g, '""').replace(/^([=+\-@\t\r])/, "'$1") + '"';
     const rows = [['שם', 'סטטוס', 'מלווים', 'סה"כ אנשים', 'הערה', 'תאריך']].concat(
@@ -304,9 +335,10 @@ async function handleApi(req, res, url) {
     const r = await mutateOrReply(res, (list) => {
       const i = list.findIndex((x) => x.id === id);
       if (i === -1) throw new HttpError(404, 'לא נמצא');
-      list.splice(i, 1);
+      return list.splice(i, 1)[0];
     });
     if (!r.ok) return;
+    archiveDeleted(r.out); // המחיקה לא סופית: העותק נשמר בסל האשפה במסד
     return send(res, 200, { ok: true });
   }
   return send(res, 404, { error: 'not found' });

@@ -49,7 +49,7 @@
     $('#rows').replaceChildren(...list.map((r) => {
       const del = el('button', { className: 'del', title: 'מחיקה', textContent: '🗑️' });
       del.addEventListener('click', async () => {
-        if (!confirm('למחוק את "' + r.name + '"?')) return;
+        if (!confirm('להסיר את "' + r.name + '" מהרשימה?\n(עותק נשמר בסל האשפה ואפשר לשחזר)')) return;
         try {
           const res = await api('/api/admin/rsvp/' + encodeURIComponent(r.id), { method: 'DELETE' });
           if (!res.ok && res.status !== 404) alert((await res.json().catch(() => ({}))).error || 'המחיקה לא הצליחה, נסו שוב');
